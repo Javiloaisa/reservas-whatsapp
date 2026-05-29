@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import sys
 
+from app import logconf
 from app.config import settings
 from app.db import SessionLocal
 from app.services import agente
 
 
 def main() -> None:
+    logconf.setup()
     telefono = sys.argv[1] if len(sys.argv) > 1 else "34600000000"
     if not settings.anthropic_enabled:
         print("AVISO: ANTHROPIC_API_KEY no configurada -> el bot respondera en modo eco.\n")

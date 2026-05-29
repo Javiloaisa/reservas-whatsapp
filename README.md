@@ -4,9 +4,10 @@ Bot de WhatsApp que atiende a clientes y reserva citas conversando en lenguaje n
 (Anthropic Claude + tool use), con la base de datos como **fuente de verdad** y Google
 Calendar como espejo de salida. Backend en FastAPI.
 
-Este repositorio cubre las **fases 1–4** del plan (`CLAUDE.md` §15): base de datos, webhook
-de WhatsApp, agente conversacional y agenda con reserva/cancelación de citas. Las fases 5–8
-(avisos programados, API y UI del panel, endurecimiento) están **pendientes**.
+Este repositorio cubre las **fases 1–5** del plan (`CLAUDE.md` §15): base de datos, webhook
+de WhatsApp, agente conversacional, agenda con reserva/cancelación de citas y avisos programados
+(recordatorio 24 h + resumen diario). Las fases 6–8 (API y UI del panel, endurecimiento) están
+**pendientes**.
 
 ## Estado de las integraciones
 
@@ -61,7 +62,41 @@ en la DB local; WhatsApp y Calendar quedan en stub):
 - `POST /dev/simulate` — inyecta un mensaje en el mismo pipeline sin pasar por Meta:
   `{"telefono": "34600000000", "texto": "hola"}` → devuelve la respuesta del bot.
 
-## Verificación (criterios de aceptación cubiertos en fases 1–4)
+### Avisos programados (fase 5)
+
+Dos entrypoints pensados para cron. En desarrollo se ejecutan a mano (WhatsApp en stub registra
+el envío en consola):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.recordatorios     # recordatorio 24 h (cada hora)
+.\.venv\Scripts\python.exe -m scripts.resumen_diario     # resumen al podólogo (1 vez/día)
+```
+
+- **Recordatorio**: avisa a las citas confirmadas cuyo inicio cae en `[ahora+23h, ahora+25h]` y las
+  marca como enviadas (idempotente: una sola vez por cita).
+- **Resumen diario**: envía al número de `config.podologo_whatsapp` las citas reservadas hoy. Si ese
+  número no está configurado, no envía (lo indica por log).
+
+#### Plantillas de WhatsApp (obligatorias para mensajes iniciados por el negocio)
+
+Fuera de la ventana de 24 h, WhatsApp solo permite plantillas aprobadas. Hay que crearlas y aprobarlas
+en **WhatsApp Manager** con estos nombres, idioma `es` y variables (placeholder §16 — ajustar el texto):
+
+| Plantilla | Variables | Texto sugerido |
+|---|---|---|
+| `recordatorio_cita` | `{{1}}`=nombre, `{{2}}`=servicio, `{{3}}`=hora | «Hola {{1}}, te recordamos tu cita de {{2}} mañana a las {{3}}. Si no puedes asistir, avísanos.» |
+| `resumen_diario` | `{{1}}`=resumen | «Citas reservadas hoy: {{1}}» |
+
+Los nombres están en `app/services/avisos.py` (`TEMPLATE_RECORDATORIO`, `TEMPLATE_RESUMEN`).
+
+#### Cron (producción, `CLAUDE.md` §13)
+
+```cron
+30 20 * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.resumen_diario >> cron.log 2>&1
+0  *  * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> cron.log 2>&1
+```
+
+## Verificación (criterios de aceptación cubiertos en fases 1–5)
 
 - **Solo huecos reales**: `consultar_disponibilidad` respeta horarios, bloqueos, buffer y citas
   existentes (verificado: jornada L–V 9–14/16–20 con servicio de 30 min → 34 huecos; un bloqueo
@@ -72,6 +107,9 @@ en la DB local; WhatsApp y Calendar quedan en stub):
   citas ni mensajes duplicados).
 - **`bot_activo=false`** detiene las respuestas automáticas (mensaje de atención manual) sin caídas.
 - **Toda cita creada/cancelada** intenta sincronizarse con Calendar (registrado en stub).
+- **Recordatorio 24 h**: se envía a las citas en la ventana 23–25 h exactamente una vez (idempotente).
+- **Resumen diario**: se envía al podólogo una vez al día (vía plantilla); omitido si no hay número.
+- **Mensajes iniciados por el negocio** usan plantillas (`send_template`), no texto libre.
 
 ## Decisiones aplicadas (de `CLAUDE.md` §16)
 
@@ -96,9 +134,11 @@ app/
   models.py          modelos SQLAlchemy (todas las tablas de §4)
   schemas.py         Pydantic (entrada/salida API)
   routers/webhook.py GET/POST /webhook + /dev/simulate
+  logconf.py         configuración de logging (app + scripts)
   services/
     agente.py        Claude + bucle de tool use + historial
     agenda.py        disponibilidad, crear/cancelar cita (regla de negocio)
+    avisos.py        recordatorios 24 h + resumen diario (plantillas)
     calendar_gcal.py Google Calendar (stub si no hay credenciales)
     whatsapp.py      envío de texto/plantillas (stub si no hay credenciales)
     config_repo.py   acceso a la tabla config + zona horaria
@@ -106,6 +146,8 @@ alembic/             migraciones (EXCLUDE condicional a PostgreSQL)
 scripts/
   seed.py            carga inicial idempotente
   chat_local.py      REPL de prueba contra el pipeline del agente
+  recordatorios.py   entrypoint cron: recordatorios 24 h
+  resumen_diario.py  entrypoint cron: resumen al podólogo
 ```
 
 ## Despliegue (resumen, `CLAUDE.md` §13 — fase futura)

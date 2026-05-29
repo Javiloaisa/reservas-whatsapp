@@ -5,18 +5,13 @@ Fases posteriores montaran aqui los routers /api (panel) y /admin (UI).
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import FastAPI
 
+from app import logconf
 from app.config import settings
 from app.routers import webhook
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+logconf.setup()
 
 app = FastAPI(title="Agente Podologo", version="0.1.0")
 app.include_router(webhook.router)
