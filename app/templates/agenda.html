@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% set activo = 'agenda' %}
+{% block title %}Agenda{% endblock %}
+{% block content %}
+<h1>Agenda</h1>
+
+<div class="card">
+  <h2>Nueva cita</h2>
+  <form method="post" action="/admin/citas" class="row">
+    <div><label>Teléfono</label><input name="telefono" required placeholder="34600111222"></div>
+    <div><label>Nombre</label><input name="nombre" placeholder="(opcional)"></div>
+    <div><label>Servicio</label>
+      <select name="servicio_id" required>
+        {% for s in servicios %}<option value="{{ s.id }}">{{ s.nombre }} ({{ s.duracion_min }}min)</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Inicio</label><input type="datetime-local" name="inicio" required></div>
+    <div><button type="submit">Crear</button></div>
+  </form>
+  <p class="muted">La hora se interpreta en la zona horaria de la clínica ({{ tz }}).</p>
+</div>
+
+<div class="card">
+  <form method="get" action="/admin/agenda" class="row">
+    <div><label>Estado</label>
+      <select name="estado" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        {% for e in estados %}<option value="{{ e }}" {{ 'selected' if filtro_estado==e }}>{{ e }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Desde</label><input type="date" name="desde" value="{{ filtro_desde }}" onchange="this.form.submit()"></div>
+  </form>
+</div>
+
+<table>
+  <thead><tr><th>Inicio</th><th>Servicio</th><th>Cliente</th><th>Estado</th><th>Acciones</th></tr></thead>
+  <tbody>
+  {% for c in citas %}
+    <tr>
+      <td>{{ c.inicio_str }}</td>
+      <td>{{ c.servicio }}</td>
+      <td>{{ c.cliente_nombre or '—' }}<br><span class="muted">{{ c.cliente_telefono }}</span></td>
+      <td><span class="badge b-{{ c.estado }}">{{ c.estado }}</span></td>
+      <td>
+        {% if c.estado != 'cancelada' %}
+        <form class="inline" method="post" action="/admin/citas/{{ c.id }}/estado">
+          <input type="hidden" name="estado" value="completada"><button class="small sec" title="Marcar completada">✓</button>
+        </form>
+        <form class="inline" method="post" action="/admin/citas/{{ c.id }}/estado">
+          <input type="hidden" name="estado" value="no_show"><button class="small sec" title="No se presentó">✗</button>
+        </form>
+        {% if c.es_futura %}
+        <form class="inline" method="post" action="/admin/citas/{{ c.id }}/reprogramar">
+          <input type="datetime-local" name="nuevo_inicio" required style="min-width:auto;">
+          <button class="small sec">Reprogramar</button>
+        </form>
+        <form class="inline" method="post" action="/admin/citas/{{ c.id }}/cancelar" onsubmit="return confirm('¿Cancelar esta cita?')">
+          <button class="small danger">Cancelar</button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">No hay citas con estos filtros.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

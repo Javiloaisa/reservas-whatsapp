@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set activo = 'horarios' %}
+{% block title %}Horarios{% endblock %}
+{% block content %}
+<h1>Horarios y bloqueos</h1>
+
+<div class="card">
+  <h2>Franjas de apertura (semanal)</h2>
+  <form method="post" action="/admin/horarios" class="row">
+    <div><label>Día</label>
+      <select name="dia_semana">
+        {% for i in range(7) %}<option value="{{ i }}">{{ dias[i] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Inicio</label><input type="time" name="hora_inicio" value="09:00" required></div>
+    <div><label>Fin</label><input type="time" name="hora_fin" value="14:00" required></div>
+    <div><button type="submit">Añadir franja</button></div>
+  </form>
+  <table style="margin-top:12px;">
+    <thead><tr><th>Día</th><th>Inicio</th><th>Fin</th><th></th></tr></thead>
+    <tbody>
+    {% for h in horarios %}
+      <tr>
+        <td>{{ dias[h.dia_semana] }}</td><td>{{ h.hora_inicio.strftime('%H:%M') }}</td><td>{{ h.hora_fin.strftime('%H:%M') }}</td>
+        <td><form class="inline" method="post" action="/admin/horarios/{{ h.id }}/borrar"><button class="small danger">Borrar</button></form></td>
+      </tr>
+    {% else %}<tr><td colspan="4" class="muted">Sin franjas.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Bloqueos (vacaciones, festivos, ausencias)</h2>
+  <form method="post" action="/admin/bloqueos" class="row">
+    <div><label>Inicio</label><input type="datetime-local" name="inicio" required></div>
+    <div><label>Fin</label><input type="datetime-local" name="fin" required></div>
+    <div><label>Motivo</label><input name="motivo" placeholder="(opcional)"></div>
+    <div><button type="submit">Añadir bloqueo</button></div>
+  </form>
+  <table style="margin-top:12px;">
+    <thead><tr><th>Inicio</th><th>Fin</th><th>Motivo</th><th></th></tr></thead>
+    <tbody>
+    {% for b in bloqueos %}
+      <tr>
+        <td>{{ b.inicio_str }}</td><td>{{ b.fin_str }}</td><td>{{ b.motivo or '—' }}</td>
+        <td><form class="inline" method="post" action="/admin/bloqueos/{{ b.id }}/borrar"><button class="small danger">Borrar</button></form></td>
+      </tr>
+    {% else %}<tr><td colspan="4" class="muted">Sin bloqueos.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

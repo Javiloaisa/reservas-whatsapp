@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% set activo = 'ajustes' %}
+{% block title %}Ajustes{% endblock %}
+{% block content %}
+<h1>Ajustes</h1>
+<div class="card" style="max-width:560px;">
+  <form method="post" action="/admin/ajustes">
+    <label>Zona horaria</label>
+    <input name="timezone" value="{{ cfg.timezone|default('') }}" style="width:100%;">
+
+    <label>WhatsApp del podólogo (para el resumen diario)</label>
+    <input name="podologo_whatsapp" value="{{ cfg.podologo_whatsapp|default('') }}" style="width:100%;" placeholder="34600111222">
+
+    <label>Modelo de Claude</label>
+    <input name="modelo_claude" value="{{ cfg.modelo_claude|default('') }}" style="width:100%;">
+
+    <label>Bot automático</label>
+    <select name="bot_activo" style="width:100%;">
+      <option value="true" {{ 'selected' if cfg.bot_activo=='true' }}>Activo</option>
+      <option value="false" {{ 'selected' if cfg.bot_activo!='true' }}>Pausado</option>
+    </select>
+
+    <label>Mensaje de bienvenida</label>
+    <textarea name="mensaje_bienvenida" rows="3" style="width:100%;">{{ cfg.mensaje_bienvenida|default('') }}</textarea>
+
+    <button type="submit" style="margin-top:16px;">Guardar</button>
+  </form>
+</div>
+{% endblock %}

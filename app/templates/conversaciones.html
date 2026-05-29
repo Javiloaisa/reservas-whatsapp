@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set activo = 'conversaciones' %}
+{% block title %}Conversaciones{% endblock %}
+{% block content %}
+<h1>Conversaciones</h1>
+
+<div class="card">
+  <div class="row" style="align-items:center;">
+    <div>
+      <strong>Bot automático:</strong>
+      {% if bot_activo %}<span class="badge b-completada">activo</span>{% else %}<span class="badge b-no_show">pausado</span>{% endif %}
+    </div>
+    <form class="inline" method="post" action="/admin/bot">
+      <input type="hidden" name="bot_activo" value="{{ 'false' if bot_activo else 'true' }}">
+      <button class="small {{ 'danger' if bot_activo else '' }}">{{ 'Pausar bot' if bot_activo else 'Reactivar bot' }}</button>
+    </form>
+  </div>
+  <p class="muted">Si el bot está pausado, los mensajes entrantes reciben un aviso de atención manual.</p>
+</div>
+
+<table>
+  <thead><tr><th>Cliente</th><th>Teléfono</th><th>Mensajes</th><th>Último</th><th></th></tr></thead>
+  <tbody>
+  {% for c in clientes %}
+    <tr>
+      <td>{{ c.nombre or '—' }}</td>
+      <td>{{ c.telefono }}</td>
+      <td>{{ c.n_mensajes }}</td>
+      <td>{{ c.ultimo }}</td>
+      <td><a class="btn small" href="/admin/conversaciones/{{ c.id }}">Ver</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">Aún no hay conversaciones.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

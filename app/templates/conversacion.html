@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% set activo = 'conversaciones' %}
+{% block title %}Conversación{% endblock %}
+{% block content %}
+<p><a href="/admin/conversaciones">&larr; Volver</a></p>
+<h1>{{ cliente.nombre or cliente.telefono }}</h1>
+<p class="muted">{{ cliente.telefono }}</p>
+
+<div class="card">
+  {% for m in mensajes %}
+    <div style="margin:8px 0; display:flex; {{ 'justify-content:flex-end' if m.rol=='assistant' }}">
+      <div style="max-width:75%; padding:8px 12px; border-radius:10px; font-size:14px;
+                  background:{{ '#dbeafe' if m.rol=='assistant' else '#f3f4f6' }};">
+        <div>{{ m.contenido }}</div>
+        <div class="muted" style="font-size:11px; margin-top:3px;">{{ m.fecha }}</div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">Sin mensajes.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set mostrar_nav = false %}
+{% block title %}Acceso{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px; margin:60px auto;">
+  <h1>Acceso al panel</h1>
+  <form method="post" action="/admin/login">
+    <label>Email</label>
+    <input type="email" name="email" required style="width:100%;" value="{{ email|default('') }}">
+    <label>Contraseña</label>
+    <input type="password" name="password" required style="width:100%;">
+    <button type="submit" style="width:100%; margin-top:16px;">Entrar</button>
+  </form>
+</div>
+{% endblock %}

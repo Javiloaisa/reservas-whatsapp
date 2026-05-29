@@ -26,7 +26,7 @@ def get_db() -> Iterator[Session]:
 
 
 def require_admin(request: Request, db: Session = Depends(get_db)) -> UsuarioAdmin:
-    """Devuelve el admin de la sesion o 401 si no hay sesion valida."""
+    """Para la API JSON: devuelve el admin de la sesion o 401 si no hay sesion valida."""
     admin_id = request.session.get(SESSION_KEY)
     if admin_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
@@ -34,4 +34,16 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> UsuarioAdm
     if admin is None:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesion invalida")
+    return admin
+
+
+def require_admin_html(request: Request, db: Session = Depends(get_db)) -> UsuarioAdmin:
+    """Para las paginas del panel: si no hay sesion, redirige a /admin/login (303)."""
+    admin_id = request.session.get(SESSION_KEY)
+    admin = db.get(UsuarioAdmin, admin_id) if admin_id is not None else None
+    if admin is None:
+        request.session.clear()
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/admin/login"}
+        )
     return admin

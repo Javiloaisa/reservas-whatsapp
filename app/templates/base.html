@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Panel{% endblock %} · Clínica de podología</title>
+  <style>
+    :root { --azul:#2563eb; --gris:#f3f4f6; --borde:#e5e7eb; --txt:#1f2937; --muted:#6b7280; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--txt); background:#fafafa; }
+    header { background:#fff; border-bottom:1px solid var(--borde); padding:0 20px; display:flex; align-items:center; gap:20px; height:56px; }
+    header .brand { font-weight:700; color:var(--azul); }
+    nav { display:flex; gap:4px; flex-wrap:wrap; flex:1; }
+    nav a { padding:8px 12px; border-radius:8px; text-decoration:none; color:var(--txt); font-size:14px; }
+    nav a:hover { background:var(--gris); }
+    nav a.active { background:var(--azul); color:#fff; }
+    .logout { color:var(--muted); text-decoration:none; font-size:14px; }
+    main { max-width:1100px; margin:24px auto; padding:0 20px; }
+    h1 { font-size:22px; margin:0 0 16px; }
+    h2 { font-size:16px; margin:24px 0 8px; }
+    table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--borde); border-radius:10px; overflow:hidden; }
+    th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--borde); font-size:14px; }
+    th { background:var(--gris); font-weight:600; }
+    tr:last-child td { border-bottom:none; }
+    .card { background:#fff; border:1px solid var(--borde); border-radius:10px; padding:16px; margin-bottom:16px; }
+    form.inline { display:inline; }
+    label { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
+    input, select, textarea { padding:7px 9px; border:1px solid var(--borde); border-radius:7px; font-size:14px; font-family:inherit; }
+    input, select { min-width:140px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    button, .btn { background:var(--azul); color:#fff; border:none; padding:8px 14px; border-radius:7px; font-size:14px; cursor:pointer; }
+    button.sec { background:#fff; color:var(--txt); border:1px solid var(--borde); }
+    button.danger { background:#dc2626; }
+    button.small { padding:4px 8px; font-size:12px; }
+    .badge { padding:2px 8px; border-radius:99px; font-size:12px; }
+    .b-confirmada { background:#dbeafe; color:#1e40af; }
+    .b-cancelada { background:#fee2e2; color:#991b1b; }
+    .b-completada { background:#dcfce7; color:#166534; }
+    .b-no_show { background:#fef3c7; color:#92400e; }
+    .alert { padding:10px 14px; border-radius:8px; margin-bottom:16px; font-size:14px; }
+    .alert.err { background:#fee2e2; color:#991b1b; }
+    .alert.ok { background:#dcfce7; color:#166534; }
+    .muted { color:var(--muted); font-size:13px; }
+  </style>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+{% if mostrar_nav|default(true) %}
+<header>
+  <span class="brand">🦶 Podología</span>
+  <nav>
+    {% set p = activo|default('') %}
+    <a href="/admin/agenda" class="{{ 'active' if p=='agenda' }}">Agenda</a>
+    <a href="/admin/servicios" class="{{ 'active' if p=='servicios' }}">Servicios</a>
+    <a href="/admin/horarios" class="{{ 'active' if p=='horarios' }}">Horarios</a>
+    <a href="/admin/conversaciones" class="{{ 'active' if p=='conversaciones' }}">Conversaciones</a>
+    <a href="/admin/stats" class="{{ 'active' if p=='stats' }}">Estadísticas</a>
+    <a href="/admin/ajustes" class="{{ 'active' if p=='ajustes' }}">Ajustes</a>
+  </nav>
+  <a class="logout" href="/admin/logout">Salir</a>
+</header>
+{% endif %}
+<main>
+  {% if error %}<div class="alert err">{{ error }}</div>{% endif %}
+  {% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

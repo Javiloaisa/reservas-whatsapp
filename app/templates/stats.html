@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% set activo = 'stats' %}
+{% block title %}Estadísticas{% endblock %}
+{% block content %}
+<h1>Estadísticas</h1>
+
+<div class="card">
+  <form method="get" action="/admin/stats" class="row">
+    <div><label>Periodo (días)</label><input type="number" name="periodo" value="{{ stats.periodo_dias }}" min="1" max="365" onchange="this.form.submit()"></div>
+  </form>
+</div>
+
+<div class="row">
+  <div class="card" style="flex:1;">
+    <h2>Citas por estado</h2>
+    <table>
+      <tbody>
+        <tr><th>Total</th><td>{{ stats.total }}</td></tr>
+        {% for estado, n in stats.por_estado.items() %}
+          <tr><td><span class="badge b-{{ estado }}">{{ estado }}</span></td><td>{{ n }}</td></tr>
+        {% endfor %}
+        <tr><th>Tasa de no-show</th><td>{{ (stats.tasa_no_show * 100) | round(1) }}%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="flex:1;">
+    <h2>Servicios más pedidos</h2>
+    <table>
+      <thead><tr><th>Servicio</th><th>Citas</th></tr></thead>
+      <tbody>
+        {% for s in stats.servicios_top %}
+          <tr><td>{{ s.servicio }}</td><td>{{ s.citas }}</td></tr>
+        {% else %}
+          <tr><td colspan="2" class="muted">Sin datos en el periodo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

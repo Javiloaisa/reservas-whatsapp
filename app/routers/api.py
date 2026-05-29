@@ -40,6 +40,7 @@ from app.schemas import (
 from app.security import verify_password
 from app.services import agenda
 from app.services.config_repo import all_config, set_config
+from app.services.stats import resumen_estadisticas
 
 router = APIRouter(prefix="/api")
 
@@ -329,35 +330,4 @@ def stats(
     db: Session = Depends(get_db),
     _: UsuarioAdmin = Depends(require_admin),
 ) -> StatsOut:
-    ahora = dt.datetime.now(dt.timezone.utc)
-    desde = ahora - dt.timedelta(days=periodo)
-
-    por_estado_rows = db.execute(
-        select(Cita.estado, func.count())
-        .where(Cita.inicio >= desde)
-        .group_by(Cita.estado)
-    ).all()
-    por_estado = {estado: n for estado, n in por_estado_rows}
-    total = sum(por_estado.values())
-
-    servicios_rows = db.execute(
-        select(Servicio.nombre, func.count())
-        .join(Cita, Cita.servicio_id == Servicio.id)
-        .where(Cita.inicio >= desde)
-        .group_by(Servicio.nombre)
-        .order_by(func.count().desc())
-        .limit(5)
-    ).all()
-    servicios_top = [{"servicio": nombre, "citas": n} for nombre, n in servicios_rows]
-
-    no_show = por_estado.get(ESTADO_NO_SHOW, 0)
-    finalizadas = no_show + por_estado.get(ESTADO_COMPLETADA, 0)
-    tasa = round(no_show / finalizadas, 3) if finalizadas else 0.0
-
-    return StatsOut(
-        periodo_dias=periodo,
-        total=total,
-        por_estado=por_estado,
-        servicios_top=servicios_top,
-        tasa_no_show=tasa,
-    )
+    return StatsOut(**resumen_estadisticas(db, periodo))

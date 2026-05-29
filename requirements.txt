@@ -13,6 +13,10 @@ httpx>=0.27
 # --- Sesiones del panel (cookie firmada de Starlette SessionMiddleware) ---
 itsdangerous>=2.1
 
+# --- UI del panel (plantillas server-side) ---
+jinja2>=3.1
+python-multipart>=0.0.9   # formularios del panel (form-urlencoded)
+
 # --- Auth del panel (seed de admin; se usa de lleno en fases posteriores) ---
 # bcrypt fijado <4.1: passlib 1.7.4 es incompatible con la API de bcrypt 4.1+.
 passlib>=1.7
