@@ -60,6 +60,35 @@ def create_event(
     return event.get("id")
 
 
+def update_event(
+    event_id: str | None,
+    summary: str,
+    start: dt.datetime,
+    end: dt.datetime,
+    description: str | None = None,
+) -> str | None:
+    """Actualiza un evento existente. Si no hay id, lo crea. No-op (log) en modo stub."""
+    if not settings.gcal_enabled:
+        log.info("[GCAL STUB] update_event %s -> %s/%s", event_id, start.isoformat(), end.isoformat())
+        return event_id
+    if not event_id:
+        return create_event(summary, start, end, description)
+
+    body = {
+        "summary": summary,
+        "description": description or "",
+        "start": {"dateTime": start.isoformat()},
+        "end": {"dateTime": end.isoformat()},
+    }
+    event = (
+        _service()
+        .events()
+        .patch(calendarId=settings.google_calendar_id, eventId=event_id, body=body)
+        .execute()
+    )
+    return event.get("id")
+
+
 def delete_event(event_id: str | None) -> None:
     """Borra un evento. No-op si no hay id o en modo stub."""
     if not event_id:

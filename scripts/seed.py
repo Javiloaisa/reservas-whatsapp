@@ -15,15 +15,13 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from passlib.context import CryptContext
 from sqlalchemy import func, select
 
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Horario, Servicio, UsuarioAdmin
+from app.security import hash_password
 from app.services.config_repo import get_config, set_config
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # (nombre, duracion_min, buffer_min, precio)  -- placeholders, ver §16
 SERVICIOS = [
@@ -86,7 +84,7 @@ def seed_admin(session) -> None:
         print(f"admin: {settings.admin_email} ya existe, se omite")
         return
     session.add(
-        UsuarioAdmin(email=settings.admin_email, password_hash=pwd_context.hash(settings.admin_password))
+        UsuarioAdmin(email=settings.admin_email, password_hash=hash_password(settings.admin_password))
     )
     print(f"admin: creado {settings.admin_email}")
 

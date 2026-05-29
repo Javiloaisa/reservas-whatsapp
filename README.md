@@ -4,10 +4,10 @@ Bot de WhatsApp que atiende a clientes y reserva citas conversando en lenguaje n
 (Anthropic Claude + tool use), con la base de datos como **fuente de verdad** y Google
 Calendar como espejo de salida. Backend en FastAPI.
 
-Este repositorio cubre las **fases 1–5** del plan (`CLAUDE.md` §15): base de datos, webhook
-de WhatsApp, agente conversacional, agenda con reserva/cancelación de citas y avisos programados
-(recordatorio 24 h + resumen diario). Las fases 6–8 (API y UI del panel, endurecimiento) están
-**pendientes**.
+Este repositorio cubre las **fases 1–6** del plan (`CLAUDE.md` §15): base de datos, webhook
+de WhatsApp, agente conversacional, agenda con reserva/cancelación de citas, avisos programados
+(recordatorio 24 h + resumen diario) y la **API del panel** con login. Las fases 7–8 (UI del panel
+y endurecimiento) están **pendientes**.
 
 ## Estado de las integraciones
 
@@ -96,7 +96,25 @@ Los nombres están en `app/services/avisos.py` (`TEMPLATE_RECORDATORIO`, `TEMPLA
 0  *  * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> cron.log 2>&1
 ```
 
-## Verificación (criterios de aceptación cubiertos en fases 1–5)
+### API del panel (fase 6)
+
+Endpoints bajo `/api`, protegidos por sesión (cookie firmada). Login con el admin del seed
+(`ADMIN_EMAIL` / `ADMIN_PASSWORD` del `.env`). Documentación interactiva en `/docs`.
+
+| Método | Ruta | Función |
+|---|---|---|
+| POST | `/api/login`, `/api/logout` | Autenticación (cookie de sesión) |
+| GET / POST | `/api/citas` | Listar (`?desde=&hasta=&estado=`) / crear cita manual |
+| PATCH / DELETE | `/api/citas/{id}` | Estado, notas, reprogramar / cancelar (+ Calendar) |
+| GET/POST/PATCH/DELETE | `/api/servicios` | CRUD (DELETE = baja lógica) |
+| GET/POST/DELETE | `/api/horarios`, `/api/bloqueos` | Franjas semanales y vacaciones |
+| GET | `/api/clientes/{id}/conversacion` | Historial del cliente con el bot |
+| GET/PATCH | `/api/config` | Leer/editar configuración (incl. `bot_activo`) |
+| GET | `/api/stats?periodo=` | Citas por estado, servicios top, tasa no-show |
+
+Toda mutación de cita (crear/reprogramar/cancelar) sincroniza Google Calendar (stub si no hay credenciales).
+
+## Verificación (criterios de aceptación cubiertos en fases 1–6)
 
 - **Solo huecos reales**: `consultar_disponibilidad` respeta horarios, bloqueos, buffer y citas
   existentes (verificado: jornada L–V 9–14/16–20 con servicio de 30 min → 34 huecos; un bloqueo
@@ -135,6 +153,9 @@ app/
   schemas.py         Pydantic (entrada/salida API)
   routers/webhook.py GET/POST /webhook + /dev/simulate
   logconf.py         configuración de logging (app + scripts)
+  deps.py            dependencias: sesión DB + auth admin (require_admin)
+  security.py        hash/verify de contraseñas (bcrypt)
+  routers/api.py     API del panel (/api/*), protegida por sesión
   services/
     agente.py        Claude + bucle de tool use + historial
     agenda.py        disponibilidad, crear/cancelar cita (regla de negocio)

@@ -21,7 +21,11 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ESTADO_CANCELADA,
+    ESTADO_COMPLETADA,
     ESTADO_CONFIRMADA,
+    ESTADO_NO_SHOW,
+    RECORDATORIO_NO_APLICA,
+    RECORDATORIO_PENDIENTE,
     Bloqueo,
     Cita,
     Cliente,
@@ -30,6 +34,8 @@ from app.models import (
 )
 from app.services import calendar_gcal
 from app.services.config_repo import get_timezone
+
+ESTADOS_VALIDOS = {ESTADO_CONFIRMADA, ESTADO_CANCELADA, ESTADO_COMPLETADA, ESTADO_NO_SHOW}
 
 log = logging.getLogger("agenda")
 
@@ -157,6 +163,7 @@ def _slot_libre(
     inicio_utc: dt.datetime,
     fin_utc: dt.datetime,
     tz: ZoneInfo,
+    excluir_cita_id: int | None = None,
 ) -> bool:
     """Revalida que [inicio, fin] sea un hueco valido (horario, bloqueos, citas)."""
     fecha_local = inicio_utc.astimezone(tz).date()
@@ -185,6 +192,8 @@ def _slot_libre(
 
     # 3) No solapa citas existentes (ampliadas con buffer en ambos lados).
     for cita in _citas_del_rango(session, inicio_utc - buf, fin_utc + buf):
+        if excluir_cita_id is not None and cita.id == excluir_cita_id:
+            continue
         r0, r1 = _reservado(cita)
         if _overlap(inicio_utc, fin_utc + buf, r0, r1):
             return False
@@ -319,6 +328,74 @@ def cancelar_cita(
 
     session.commit()
     log.info("Cita %s cancelada", cita.id)
+    return cita
+
+
+def listar_citas(
+    session: Session,
+    desde: dt.datetime | None = None,
+    hasta: dt.datetime | None = None,
+    estado: str | None = None,
+) -> list[Cita]:
+    """Lista citas con filtros opcionales (para el panel)."""
+    stmt = select(Cita)
+    if desde is not None:
+        stmt = stmt.where(Cita.inicio >= desde)
+    if hasta is not None:
+        stmt = stmt.where(Cita.inicio < hasta)
+    if estado is not None:
+        stmt = stmt.where(Cita.estado == estado)
+    return list(session.scalars(stmt.order_by(Cita.inicio)).all())
+
+
+def actualizar_cita(
+    session: Session,
+    cita_id: int,
+    estado: str | None = None,
+    notas: str | None = None,
+    nuevo_inicio_iso: str | None = None,
+) -> Cita:
+    """Cambia estado/notas y/o reprograma una cita (panel). Sincroniza Calendar."""
+    cita = session.get(Cita, cita_id)
+    if cita is None:
+        raise CitaNoEncontrada("Cita no encontrada.")
+    tz = get_timezone(session)
+
+    if estado is not None:
+        if estado not in ESTADOS_VALIDOS:
+            raise AgendaError(f"Estado invalido: {estado}")
+        cita.estado = estado
+        if estado == ESTADO_CANCELADA:
+            try:
+                calendar_gcal.delete_event(cita.gcal_event_id)
+            except Exception as exc:  # noqa: BLE001
+                log.error("No se pudo borrar el evento de la cita %s: %s", cita.id, exc)
+            cita.gcal_event_id = None
+            cita.recordatorio = RECORDATORIO_NO_APLICA
+
+    if notas is not None:
+        cita.notas = notas
+
+    if nuevo_inicio_iso is not None:
+        servicio = cita.servicio
+        nuevo_inicio = _parse_inicio(nuevo_inicio_iso, tz)
+        nuevo_fin = nuevo_inicio + dt.timedelta(minutes=servicio.duracion_min)
+        if nuevo_inicio <= _utcnow():
+            raise SlotNoDisponible("La nueva hora ya ha pasado.")
+        if not _slot_libre(session, servicio, nuevo_inicio, nuevo_fin, tz, excluir_cita_id=cita.id):
+            raise SlotNoDisponible("La nueva hora no esta disponible.")
+        cita.inicio = nuevo_inicio
+        cita.fin = nuevo_fin
+        cita.recordatorio = RECORDATORIO_PENDIENTE  # rearmar recordatorio tras cambio de hora
+        try:
+            resumen = f"{servicio.nombre} - {cita.cliente.nombre or cita.cliente.telefono}"
+            cita.gcal_event_id = calendar_gcal.update_event(
+                cita.gcal_event_id, resumen, nuevo_inicio, nuevo_fin
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("No se pudo actualizar el evento de la cita %s: %s", cita.id, exc)
+
+    session.commit()
     return cita
 
 
