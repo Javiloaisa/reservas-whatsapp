@@ -4,10 +4,12 @@ Bot de WhatsApp que atiende a clientes y reserva citas conversando en lenguaje n
 (Anthropic Claude + tool use), con la base de datos como **fuente de verdad** y Google
 Calendar como espejo de salida. Backend en FastAPI.
 
-Este repositorio cubre las **fases 1–7** del plan (`CLAUDE.md` §15): base de datos, webhook
-de WhatsApp, agente conversacional, agenda con reserva/cancelación de citas, avisos programados
-(recordatorio 24 h + resumen diario), la **API del panel** con login y el **panel de administración**
-(UI HTML en `/admin`). La fase 8 (endurecimiento y despliegue) está **pendiente**.
+Este repositorio cubre las **fases 1–8** del plan (`CLAUDE.md` §15), es decir el proyecto
+**completo**: base de datos, webhook de WhatsApp, agente conversacional, agenda con
+reserva/cancelación de citas, avisos programados (recordatorio 24 h + resumen diario), la
+**API del panel** con login, el **panel de administración** (UI HTML en `/admin`) y el
+**endurecimiento y despliegue** (firma de webhooks, gating de endpoints de desarrollo,
+chequeos de arranque y artefactos de producción en `deploy/`).
 
 ## Estado de las integraciones
 
@@ -132,7 +134,25 @@ siguen el patrón POST-redirect-GET. Login con el admin del seed (`ADMIN_EMAIL` 
 
 Las horas de los formularios (`datetime-local`/`time`) se interpretan en la zona horaria de la clínica.
 
-## Verificación (criterios de aceptación cubiertos en fases 1–6)
+## Endurecimiento (fase 8)
+
+Diferencias clave entre **desarrollo** (`DEBUG=true`) y **producción** (`DEBUG=false`):
+
+- **Firma de los webhooks**: si se configura `WHATSAPP_APP_SECRET`, todo `POST /webhook` debe traer
+  una firma `X-Hub-Signature-256` válida (HMAC-SHA256 del cuerpo crudo); los payloads que no provienen
+  de Meta se rechazan con `403`. Sin App Secret (dev), no se exige firma.
+- **Endpoints de desarrollo gateados**: `/dev/simulate` (ejecuta el agente sin auth) y la documentación
+  interactiva (`/docs`, `/redoc`, `/openapi.json`) **solo** existen con `DEBUG=true`.
+- **Chequeos de arranque**: con `DEBUG=false`, el proceso **aborta** si `SECRET_KEY` sigue siendo el de
+  desarrollo (evita falsificación de sesiones) y avisa por log si `ADMIN_PASSWORD` es el de ejemplo o si
+  falta `WHATSAPP_APP_SECRET`.
+- **Sesiones**: cookie firmada, `same_site=lax` y `https_only` automático cuando `APP_BASE_URL` es HTTPS.
+
+Pruebas automáticas del endurecimiento en `tests/` (`pytest -q`): firma válida/ inválida/ausente, gating
+de `/dev/simulate` y `/docs`, chequeos de arranque y redirección del panel sin sesión. No invocan al
+agente, así que no consumen tokens de Anthropic.
+
+## Verificación (criterios de aceptación)
 
 - **Solo huecos reales**: `consultar_disponibilidad` respeta horarios, bloqueos, buffer y citas
   existentes (verificado: jornada L–V 9–14/16–20 con servicio de 30 min → 34 huecos; un bloqueo
@@ -158,18 +178,19 @@ Las horas de los formularios (`datetime-local`/`time`) se interpretan en la zona
   (ver `UTCDateTime` en `app/db.py`).
 - **Servicios/horario (placeholder)**: Quiropodia 30/0, Estudio biomecánico 45/0, Uña encarnada
   40/0, Revisión 20/0; horario L–V 9:00–14:00 y 16:00–20:00. Editar en `scripts/seed.py` o en DB.
-- **Scheduler y panel** (fases 5–8): pendientes. Recomendado: cron del sistema y panel Jinja2+HTMX.
+- **Scheduler y panel** (fases 5–8): cron del sistema (`deploy/crontab.example`) y panel Jinja2+HTMX
+  server-side, ya implementados.
 
 ## Estructura
 
 ```
 app/
-  main.py            FastAPI: monta el router del webhook
-  config.py          settings desde .env (+ flags de integraciones)
+  main.py            FastAPI: monta los routers + chequeos de arranque
+  config.py          settings desde .env (+ flags de integraciones, DEBUG)
   db.py              engine/sesión/Base + UTCDateTime
   models.py          modelos SQLAlchemy (todas las tablas de §4)
   schemas.py         Pydantic (entrada/salida API)
-  routers/webhook.py GET/POST /webhook + /dev/simulate
+  routers/webhook.py GET/POST /webhook (firma HMAC) + /dev/simulate (solo DEBUG)
   logconf.py         configuración de logging (app + scripts)
   deps.py            dependencias: sesión DB + auth admin (require_admin)
   security.py        hash/verify de contraseñas (bcrypt)
@@ -190,14 +211,27 @@ scripts/
   chat_local.py      REPL de prueba contra el pipeline del agente
   recordatorios.py   entrypoint cron: recordatorios 24 h
   resumen_diario.py  entrypoint cron: resumen al podólogo
+deploy/              artefactos de producción (systemd, nginx, crontab)
+tests/               pruebas del endurecimiento (pytest)
 ```
 
-## Despliegue (resumen, `CLAUDE.md` §13 — fase futura)
+## Despliegue (producción)
 
-1. VPS Ubuntu: `python3-venv`, `nginx`, `certbot`, `postgresql`, `libpq-dev`.
-2. PostgreSQL: crear rol/base; el `EXCLUDE` (con `btree_gist`) lo crea la migración; `alembic upgrade head`; `python -m scripts.seed`.
-   - Driver: descomentar `psycopg[binary]` en `requirements.txt` y usar `DATABASE_URL=postgresql+psycopg://...`.
-3. TLS: Nginx reverse proxy a `127.0.0.1:8000` + `certbot --nginx`.
-4. Proceso: `systemd` ejecutando `uvicorn app.main:app` (ver `CLAUDE.md` §13 para la unidad).
-5. Meta: registrar webhook `https://<dominio>/webhook`, suscribir el campo `messages`, crear y aprobar las plantillas.
-6. Google: activar Calendar API, cuenta de servicio, compartir el calendario con su `client_email`.
+Artefactos listos para copiar y adaptar en [`deploy/`](deploy/): unidad `systemd`
+(`agente-podologo.service`), reverse proxy `nginx.conf` y `crontab.example` para los avisos.
+
+1. **VPS Ubuntu**: `python3-venv`, `nginx`, `certbot`, `postgresql`, `libpq-dev`. Crear un usuario
+   de servicio (`agente`) y desplegar el código en `/opt/agente-podologo`.
+2. **`.env` de producción**: `DEBUG=false`, un `SECRET_KEY` aleatorio
+   (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), `ADMIN_PASSWORD` propio,
+   `WHATSAPP_APP_SECRET` (firma de webhooks) y `DATABASE_URL=postgresql+psycopg://...`.
+3. **PostgreSQL**: crear rol/base; el `EXCLUDE` (con `btree_gist`) lo crea la migración. Descomentar
+   `psycopg[binary]` en `requirements.txt`, luego `alembic upgrade head` y `python -m scripts.seed`.
+4. **TLS**: `cp deploy/nginx.conf /etc/nginx/sites-available/agente-podologo`, enlazar a
+   `sites-enabled`, ajustar el dominio y `certbot --nginx`.
+5. **Proceso**: `cp deploy/agente-podologo.service /etc/systemd/system/`, `systemctl enable --now
+   agente-podologo`. Uvicorn escucha solo en `127.0.0.1:8000`; Nginx es el único expuesto.
+6. **Cron**: `crontab -u agente deploy/crontab.example` (recordatorios + resumen diario).
+7. **Meta**: registrar el webhook `https://<dominio>/webhook` con el `WHATSAPP_VERIFY_TOKEN`, suscribir
+   el campo `messages`, copiar el **App Secret** a `WHATSAPP_APP_SECRET` y crear/aprobar las plantillas.
+8. **Google**: activar Calendar API, cuenta de servicio, compartir el calendario con su `client_email`.

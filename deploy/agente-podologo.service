@@ -1,0 +1,22 @@
+[Unit]
+Description=Agente WhatsApp - Clinica de podologia (FastAPI/uvicorn)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=agente
+Group=agente
+WorkingDirectory=/opt/agente-podologo
+EnvironmentFile=/opt/agente-podologo/.env
+# El .env debe tener DEBUG=false y un SECRET_KEY real en produccion.
+ExecStart=/opt/agente-podologo/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+# Endurecimiento del proceso.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 from typing import Any
 
@@ -24,6 +27,20 @@ from app.services import agente, whatsapp
 log = logging.getLogger("webhook")
 
 router = APIRouter()
+
+
+def _firma_valida(body: bytes, cabecera: str | None) -> bool:
+    """Valida la firma HMAC-SHA256 que Meta envia en X-Hub-Signature-256.
+
+    La firma se calcula sobre el cuerpo crudo con el App Secret. Comparacion en
+    tiempo constante para no filtrar informacion por temporizacion.
+    """
+    if not cabecera or not cabecera.startswith("sha256="):
+        return False
+    esperado = hmac.new(
+        settings.whatsapp_app_secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(esperado, cabecera.split("=", 1)[1])
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -81,26 +98,42 @@ def _procesar_entrante(telefono: str, texto: str, wa_message_id: str | None) -> 
 
 
 @router.post("/webhook")
-async def recibir_webhook(request: Request, background: BackgroundTasks) -> dict[str, str]:
-    """Recibe eventos de Meta. Devuelve 200 de inmediato y procesa en background."""
+async def recibir_webhook(request: Request, background: BackgroundTasks) -> Response:
+    """Recibe eventos de Meta. Devuelve 200 de inmediato y procesa en background.
+
+    Si hay App Secret configurado, valida la firma HMAC antes de procesar (rechaza
+    con 403 los payloads que no provienen de Meta).
+    """
+    body = await request.body()
+
+    if settings.webhook_signature_required and not _firma_valida(
+        body, request.headers.get("X-Hub-Signature-256")
+    ):
+        log.warning("Webhook con firma invalida o ausente; se rechaza (403)")
+        return Response(status_code=403)
+
     try:
-        payload = await request.json()
-    except Exception:  # noqa: BLE001
+        payload = json.loads(body)
+    except (ValueError, TypeError):
         log.warning("Payload de webhook no es JSON valido")
-        return {"status": "ignored"}
+        return Response(content='{"status": "ignored"}', media_type="application/json")
 
     for telefono, texto, wa_id in _extraer_mensajes(payload):
         background.add_task(_procesar_entrante, telefono, texto, wa_id)
 
-    return {"status": "received"}
+    return Response(content='{"status": "received"}', media_type="application/json")
 
 
-@router.post("/dev/simulate", response_model=SimulateResponse)
-async def simular_mensaje(req: SimulateRequest) -> SimulateResponse:
-    """Procesa un mensaje de forma SINCRONA y devuelve la respuesta (pruebas locales)."""
-    session = SessionLocal()
-    try:
-        respuesta = agente.procesar_mensaje(session, req.telefono, req.texto)
-        return SimulateResponse(respuesta=respuesta)
-    finally:
-        session.close()
+# /dev/simulate es un atajo de pruebas que ejecuta el agente SIN autenticacion ni
+# firma. Solo se expone en modo desarrollo (DEBUG=true); nunca en produccion.
+if settings.debug:
+
+    @router.post("/dev/simulate", response_model=SimulateResponse)
+    async def simular_mensaje(req: SimulateRequest) -> SimulateResponse:
+        """Procesa un mensaje de forma SINCRONA y devuelve la respuesta (pruebas locales)."""
+        session = SessionLocal()
+        try:
+            respuesta = agente.procesar_mensaje(session, req.telefono, req.texto)
+            return SimulateResponse(respuesta=respuesta)
+        finally:
+            session.close()

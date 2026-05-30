@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     secret_key: str = "dev-insecure-secret-key"
     database_url: str = "sqlite:///./agente.db"
     timezone: str = "Europe/Madrid"
+    # Modo desarrollo: expone /docs y /dev/simulate y relaja los chequeos de
+    # arranque. En PRODUCCION debe ponerse DEBUG=false en el .env.
+    debug: bool = True
 
     # --- Anthropic ---
     anthropic_api_key: str = ""
@@ -35,6 +38,9 @@ class Settings(BaseSettings):
     whatsapp_token: str = ""
     whatsapp_phone_id: str = ""
     whatsapp_verify_token: str = "token-de-verificacion"
+    # App Secret de Meta: firma HMAC-SHA256 de los webhooks (X-Hub-Signature-256).
+    # Si se configura, se rechaza todo POST /webhook sin firma valida.
+    whatsapp_app_secret: str = ""
     whatsapp_template_lang: str = "es"
     graph_api_version: str = "v21.0"
 
@@ -59,6 +65,11 @@ class Settings(BaseSettings):
     @property
     def anthropic_enabled(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def webhook_signature_required(self) -> bool:
+        """True si hay App Secret => se valida la firma de los webhooks de Meta."""
+        return bool(self.whatsapp_app_secret)
 
 
 @lru_cache

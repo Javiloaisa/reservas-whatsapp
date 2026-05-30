@@ -31,3 +31,6 @@ google-auth>=2.29
 
 # --- PostgreSQL en produccion (en desarrollo se usa SQLite, sin driver extra) ---
 # psycopg[binary]>=3.1   # descomentar al desplegar contra PostgreSQL
+
+# --- Desarrollo / pruebas (no se instalan en produccion) ---
+pytest>=8.0
