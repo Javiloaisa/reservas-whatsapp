@@ -1,7 +1,4 @@
-"""Punto de entrada FastAPI. Monta el router del webhook.
-
-Fases posteriores montaran aqui los routers /api (panel) y /admin (UI).
-"""
+"""Punto de entrada FastAPI. Monta el webhook, la API del panel (/api) y la UI (/admin)."""
 
 from __future__ import annotations
 
@@ -10,7 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import logconf
 from app.config import settings
-from app.routers import api, webhook
+from app.routers import admin, api, webhook
 
 logconf.setup()
 
@@ -26,6 +23,7 @@ app.add_middleware(
 )
 app.include_router(webhook.router)
 app.include_router(api.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

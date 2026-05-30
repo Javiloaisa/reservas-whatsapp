@@ -4,10 +4,10 @@ Bot de WhatsApp que atiende a clientes y reserva citas conversando en lenguaje n
 (Anthropic Claude + tool use), con la base de datos como **fuente de verdad** y Google
 Calendar como espejo de salida. Backend en FastAPI.
 
-Este repositorio cubre las **fases 1–6** del plan (`CLAUDE.md` §15): base de datos, webhook
+Este repositorio cubre las **fases 1–7** del plan (`CLAUDE.md` §15): base de datos, webhook
 de WhatsApp, agente conversacional, agenda con reserva/cancelación de citas, avisos programados
-(recordatorio 24 h + resumen diario) y la **API del panel** con login. Las fases 7–8 (UI del panel
-y endurecimiento) están **pendientes**.
+(recordatorio 24 h + resumen diario), la **API del panel** con login y el **panel de administración**
+(UI HTML en `/admin`). La fase 8 (endurecimiento y despliegue) está **pendiente**.
 
 ## Estado de las integraciones
 
@@ -114,6 +114,24 @@ Endpoints bajo `/api`, protegidos por sesión (cookie firmada). Login con el adm
 
 Toda mutación de cita (crear/reprogramar/cancelar) sincroniza Google Calendar (stub si no hay credenciales).
 
+### Panel de administración (fase 7)
+
+UI HTML bajo `/admin` (Jinja2 + HTMX, CSS embebido), protegida por la misma sesión que la API.
+Reutiliza la lógica de negocio (`services/agenda`, `services/stats`, `config_repo`); los formularios
+siguen el patrón POST-redirect-GET. Login con el admin del seed (`ADMIN_EMAIL` / `ADMIN_PASSWORD`).
+
+| Ruta | Función |
+|---|---|
+| `/admin/login`, `/admin/logout` | Acceso (cookie de sesión); las páginas redirigen aquí si no hay sesión |
+| `/admin/agenda` | Citas con filtros + crear / completar / no-show / reprogramar / cancelar |
+| `/admin/servicios` | Alta, edición en línea y baja lógica de servicios |
+| `/admin/horarios` | Franjas semanales de apertura y bloqueos (vacaciones/ausencias) |
+| `/admin/conversaciones` | Historial del bot por cliente + pausar/reactivar el bot |
+| `/admin/stats` | Citas por estado, servicios top y tasa de no-show |
+| `/admin/ajustes` | Zona horaria, WhatsApp del podólogo, modelo, bot y mensaje de bienvenida |
+
+Las horas de los formularios (`datetime-local`/`time`) se interpretan en la zona horaria de la clínica.
+
 ## Verificación (criterios de aceptación cubiertos en fases 1–6)
 
 - **Solo huecos reales**: `consultar_disponibilidad` respeta horarios, bloqueos, buffer y citas
@@ -156,10 +174,13 @@ app/
   deps.py            dependencias: sesión DB + auth admin (require_admin)
   security.py        hash/verify de contraseñas (bcrypt)
   routers/api.py     API del panel (/api/*), protegida por sesión
+  routers/admin.py   UI del panel (/admin/*): páginas Jinja2 + formularios
+  templates/         plantillas Jinja2 del panel (base + una por sección)
   services/
     agente.py        Claude + bucle de tool use + historial
     agenda.py        disponibilidad, crear/cancelar cita (regla de negocio)
     avisos.py        recordatorios 24 h + resumen diario (plantillas)
+    stats.py         cálculo de estadísticas (API /stats y panel)
     calendar_gcal.py Google Calendar (stub si no hay credenciales)
     whatsapp.py      envío de texto/plantillas (stub si no hay credenciales)
     config_repo.py   acceso a la tabla config + zona horaria
