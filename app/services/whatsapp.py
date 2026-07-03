@@ -12,7 +12,9 @@ Reglas (§8 / §A.4):
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -22,6 +24,81 @@ from app.config import settings
 log = logging.getLogger("whatsapp")
 
 _TIMEOUT = httpx.Timeout(15.0)
+
+
+# --------------------------------------------------------------------------- #
+#  Eventos neutrales de webhook (§3 v2) — independientes del proveedor
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class MensajeEntrante:
+    """Mensaje que un cliente envia al numero de la clinica."""
+
+    telefono: str
+    nombre_perfil: str | None
+    texto: str
+    message_id: str | None
+    timestamp: dt.datetime | None
+
+
+@dataclass(frozen=True)
+class EcoSaliente:
+    """Mensaje que el PODOLOGO envio desde su app (eco de coexistencia)."""
+
+    telefono_destino: str
+    texto: str
+    message_id: str | None
+    timestamp: dt.datetime | None
+
+
+@dataclass(frozen=True)
+class Otro:
+    """Evento de webhook que no procesamos (estados de entrega, etc.)."""
+
+    tipo: str
+
+
+Evento = MensajeEntrante | EcoSaliente | Otro
+
+
+def parse_webhook(payload: dict[str, Any]) -> list[Evento]:
+    """Parsea un payload de webhook con el proveedor activo (YCloud si hay key)."""
+    if settings.ycloud_enabled:
+        from app.services import whatsapp_ycloud
+
+        return whatsapp_ycloud.parse_webhook(payload)
+    return _parse_webhook_meta(payload)
+
+
+def _parse_webhook_meta(payload: dict[str, Any]) -> list[Evento]:
+    """Payload de la Cloud API de Meta (legado y modo stub de desarrollo)."""
+    eventos: list[Evento] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            contactos = {
+                c.get("wa_id"): (c.get("profile") or {}).get("name")
+                for c in value.get("contacts", [])
+            }
+            for msg in value.get("messages", []):
+                telefono = msg.get("from", "")
+                if not telefono:
+                    continue
+                if msg.get("type") == "text":
+                    texto = (msg.get("text") or {}).get("body", "")
+                else:
+                    texto = f"[{msg.get('type', 'desconocido')}]"
+                if not texto:
+                    continue
+                eventos.append(
+                    MensajeEntrante(
+                        telefono=telefono,
+                        nombre_perfil=contactos.get(telefono),
+                        texto=texto,
+                        message_id=msg.get("id"),
+                        timestamp=None,
+                    )
+                )
+    return eventos
 
 
 def _graph_url() -> str:
@@ -54,8 +131,15 @@ def _post(payload: dict[str, Any]) -> dict[str, Any] | None:
         raise
 
 
-def send_text(to: str, body: str) -> dict[str, Any] | None:
-    """Mensaje de texto libre (solo dentro de la ventana de 24 h)."""
+def send_text(to: str, body: str) -> Any:
+    """Mensaje de texto libre (solo dentro de la ventana de 24 h).
+
+    Devuelve el message_id del proveedor (YCloud) o el payload de respuesta (Meta).
+    """
+    if settings.ycloud_enabled:
+        from app.services import whatsapp_ycloud
+
+        return whatsapp_ycloud.enviar_texto(to, body)
     if not settings.whatsapp_enabled:
         log.info("[WHATSAPP STUB] -> %s : %s", to, body)
         return None
@@ -77,6 +161,17 @@ def send_template(
 ) -> dict[str, Any] | None:
     """Mensaje basado en plantilla aprobada (mensajes iniciados por el negocio)."""
     lang = lang or settings.whatsapp_template_lang
+    if settings.ycloud_enabled:
+        from app.services import whatsapp_ycloud
+
+        # Extraer las variables posicionales del componente body (formato Meta).
+        variables = [
+            p.get("text", "")
+            for comp in (components or [])
+            if comp.get("type") == "body"
+            for p in comp.get("parameters", [])
+        ]
+        return whatsapp_ycloud.enviar_plantilla(to, name, variables, lang)
     if not settings.whatsapp_enabled:
         log.info("[WHATSAPP STUB] plantilla '%s' (%s) -> %s : %s", name, lang, to, components)
         return None
