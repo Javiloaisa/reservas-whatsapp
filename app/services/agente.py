@@ -15,6 +15,7 @@ import datetime as dt
 import json
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -107,9 +108,24 @@ def _client():  # noqa: ANN202
 
 
 # --------------------------------------------------------------------------- #
-#  System prompt dinamico
+#  System prompt dinamico (plantilla en prompts/system_agente.md, §7 v2)
 # --------------------------------------------------------------------------- #
-def _system_prompt(session: Session, cliente: Cliente) -> str:
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
+
+# RGPD (§14 v2): el primer mensaje a un cliente nuevo debe indicar que es un
+# asistente automatico.
+_NOTA_NUEVO_CLIENTE = (
+    "Es la primera vez que hablas con este cliente: en tu primer mensaje presentate "
+    "brevemente como el asistente automático de citas de la clínica."
+)
+
+
+@lru_cache
+def _plantilla_prompt() -> str:
+    return (_PROMPTS_DIR / "system_agente.md").read_text(encoding="utf-8")
+
+
+def _system_prompt(session: Session, cliente: Cliente, es_nuevo: bool = False) -> str:
     tz = get_timezone(session)
     hoy = dt.datetime.now(tz)
     servicios = agenda.listar_servicios_activos(session)
@@ -118,27 +134,19 @@ def _system_prompt(session: Session, cliente: Cliente) -> str:
         + (f", {s.precio} EUR" if s.precio is not None else "")
         for s in servicios
     ]
-    nombre = cliente.nombre or "(desconocido todavia)"
-
-    return (
-        "Eres el asistente virtual de una clinica de podologia que atiende por WhatsApp. "
-        "Tono amable, cercano y conciso (mensajes cortos, es WhatsApp).\n\n"
-        f"Fecha y hora actual: {hoy.strftime('%Y-%m-%d %H:%M')} "
-        f"({DIAS_ES[hoy.weekday()]}). Zona horaria: {tz.key}.\n"
-        f"Nombre del cliente: {nombre}. Telefono ya conocido (no lo pidas).\n\n"
-        "Servicios:\n" + "\n".join(lineas_serv) + "\n\n"
-        f"Horario de apertura: {agenda.horario_texto(session)}\n\n"
-        "Reglas:\n"
-        "- Usa SIEMPRE consultar_disponibilidad antes de ofrecer u ofertar una hora. "
-        "Nunca prometas un hueco sin haberlo verificado con la herramienta.\n"
-        "- Antes de crear una cita, confirma explicitamente con el cliente: servicio, dia y hora.\n"
-        "- Si no conoces el nombre del cliente, pidelo antes de reservar.\n"
-        "- Para reservar, pasa a crear_cita el 'inicio_iso' EXACTO que devolvio consultar_disponibilidad.\n"
-        "- Maneja y muestra siempre las horas en hora local. Interpreta 'manana', 'el viernes', etc. "
-        "respecto a la fecha actual indicada arriba.\n"
-        "- Si no hay huecos, discuplate y ofrece otro dia u hora.\n"
-        "- No respondas a temas ajenos a la clinica; reconduce con amabilidad."
-    )
+    reemplazos = {
+        "[[FECHA_HORA]]": hoy.strftime("%Y-%m-%d %H:%M"),
+        "[[DIA_SEMANA]]": DIAS_ES[hoy.weekday()],
+        "[[TIMEZONE]]": tz.key,
+        "[[NOMBRE_CLIENTE]]": cliente.nombre or "(desconocido todavia)",
+        "[[NOTA_NUEVO_CLIENTE]]": _NOTA_NUEVO_CLIENTE if es_nuevo else "",
+        "[[SERVICIOS]]": "\n".join(lineas_serv),
+        "[[HORARIO]]": agenda.horario_texto(session),
+    }
+    prompt = _plantilla_prompt()
+    for marca, valor in reemplazos.items():
+        prompt = prompt.replace(marca, valor)
+    return prompt
 
 
 # --------------------------------------------------------------------------- #
@@ -315,7 +323,8 @@ def procesar_mensaje(
     if not settings.anthropic_enabled:
         respuesta = f"(eco) {texto}"
     else:
-        system = _system_prompt(session, cliente)
+        # Cliente nuevo = este es su primer mensaje registrado (transparencia RGPD).
+        system = _system_prompt(session, cliente, es_nuevo=len(messages) <= 1)
         respuesta = _run_agent(session, telefono, system, messages)
 
     session.add(Mensaje(cliente_id=cliente.id, rol="assistant", contenido=respuesta))
