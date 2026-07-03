@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-6"
 
-    # --- WhatsApp Cloud API ---
+    # --- YCloud (BSP, coexistencia; proveedor preferente si hay API key) ---
+    ycloud_api_key: str = ""
+    # Token secreto que YCloud manda en el webhook (query ?token=... o header).
+    ycloud_webhook_secret: str = ""
+
+    # --- WhatsApp Cloud API (Meta directa; legado/migracion) ---
     whatsapp_token: str = ""
     whatsapp_phone_id: str = ""
     whatsapp_verify_token: str = "token-de-verificacion"
@@ -53,9 +58,14 @@ class Settings(BaseSettings):
     admin_password: str = "cambia-esta-contrasena"
 
     @property
+    def ycloud_enabled(self) -> bool:
+        """True si hay API key de YCloud (proveedor preferente, §8 v2)."""
+        return bool(self.ycloud_api_key)
+
+    @property
     def whatsapp_enabled(self) -> bool:
-        """True si hay credenciales para enviar por la Cloud API real."""
-        return bool(self.whatsapp_token and self.whatsapp_phone_id)
+        """True si hay credenciales para enviar por algun proveedor real."""
+        return self.ycloud_enabled or bool(self.whatsapp_token and self.whatsapp_phone_id)
 
     @property
     def gcal_enabled(self) -> bool:
