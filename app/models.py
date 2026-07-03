@@ -43,6 +43,19 @@ RECORDATORIO_PENDIENTE = "pendiente"
 RECORDATORIO_ENVIADO = "enviado"
 RECORDATORIO_NO_APLICA = "no_aplica"
 
+# --- Roles de mensaje ---
+# "user"/"assistant" se mantienen por compatibilidad con el historial existente
+# (equivalen a cliente/bot del CLAUDE.md v2); "podologo_manual" marca los ecos
+# de lo que el podologo responde a mano desde su app (coexistencia).
+ROL_CLIENTE = "user"
+ROL_BOT = "assistant"
+ROL_PODOLOGO = "podologo_manual"
+
+# --- Clasificacion de intencion (§6 v2) ---
+CLASIFICACION_CITA = "cita"
+CLASIFICACION_NO_CITA = "no_cita"
+CLASIFICACION_DUDA = "duda"
+
 
 class Servicio(Base):
     __tablename__ = "servicios"
@@ -85,6 +98,8 @@ class Cliente(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telefono: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)  # internacional sin '+'
     nombre: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Modo humano (§5 v2): mientras sea futuro, el bot no responde a este cliente.
+    modo_humano_hasta: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
     creado_en: Mapped[dt.datetime] = mapped_column(
         UTCDateTime, nullable=False, default=utcnow
     )
@@ -123,8 +138,12 @@ class Mensaje(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), nullable=False)
-    rol: Mapped[str] = mapped_column(Text, nullable=False)  # user|assistant
+    rol: Mapped[str] = mapped_column(Text, nullable=False)  # user|assistant|podologo_manual
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
+    # Etiqueta del clasificador de intencion (cita|no_cita|duda); solo en mensajes del cliente.
+    clasificacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Id del mensaje en el proveedor (YCloud/Meta); unico => deduplicacion de webhooks.
+    message_id_proveedor: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
     creado_en: Mapped[dt.datetime] = mapped_column(
         UTCDateTime, nullable=False, default=utcnow
     )
@@ -142,6 +161,21 @@ class MensajeProcesado(Base):
 
     wa_message_id: Mapped[str] = mapped_column(Text, primary_key=True)
     procesado_en: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime, nullable=False, default=utcnow
+    )
+
+
+class LogSombra(Base):
+    """Registro del modo sombra (§12 v2): lo que el bot HABRIA hecho sin enviar nada."""
+
+    __tablename__ = "log_sombra"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), nullable=False)
+    mensaje_entrante: Mapped[str] = mapped_column(Text, nullable=False)
+    clasificacion: Mapped[str] = mapped_column(Text, nullable=False)
+    respuesta_no_enviada: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creado_en: Mapped[dt.datetime] = mapped_column(
         UTCDateTime, nullable=False, default=utcnow
     )
 
