@@ -1,12 +1,15 @@
 # Avisos programados (§11 v2). Instalar con: crontab -u agente deploy/crontab.example
 # Ajusta la ruta /opt/agente-podologo si despliegas en otro sitio.
-# El servidor debe estar en hora Europe/Madrid (o ajustar la hora de cron en consecuencia).
+#
+# El servidor va en UTC y su cron no soporta CRON_TZ: el resumen se dispara a las
+# 6:00 y 7:00 UTC y un guard deja pasar solo cuando son las 8:00 en Europe/Madrid
+# (6 UTC en verano CEST, 7 UTC en invierno CET).
 
-# Agenda del dia al podologo (L-V a las 08:00, antes de abrir consulta).
-0 8 * * 1-5 cd /opt/agente-podologo && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
+# Agenda del dia al podologo (L-V a las 08:00 hora de Madrid, antes de abrir consulta).
+0 6,7 * * 1-5 cd /opt/agente-podologo && [ "$(TZ=Europe/Madrid date +\%H)" = "08" ] && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
 
 # Recordatorio 24 h (cada hora; idempotente, solo avisa a las citas en la ventana 23-25 h).
 0 * * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> /opt/agente-podologo/cron.log 2>&1
 
-# Purga RGPD de mensajes/log_sombra (§14 v2; mensual, dia 1 a las 03:00).
+# Purga RGPD de mensajes/log_sombra (§14 v2; mensual, dia 1 a las 03:00 UTC).
 0 3 1 * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.purgar_mensajes >> /opt/agente-podologo/cron.log 2>&1
