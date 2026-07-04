@@ -232,3 +232,27 @@ def test_simular_cancelar_cita_no_cancela(session) -> None:
     assert resultado.id == cita.id
     session.refresh(cita)
     assert cita.estado == "confirmada"
+
+
+# --------------------------------------------------------------------------- #
+#  Historial para la API de Claude: roles mapeados a user/assistant
+# --------------------------------------------------------------------------- #
+def test_historial_mapea_podologo_manual_a_assistant(session) -> None:
+    """Regresion: un eco del podologo en el historial rompia al agente con
+    'Unexpected role podologo_manual' (la API solo acepta user/assistant)."""
+    from app.services import agente
+
+    cliente = Cliente(telefono=_telefono())
+    session.add(cliente)
+    session.flush()
+    session.add(Mensaje(cliente_id=cliente.id, rol=ROL_PODOLOGO, contenido="Saludo automatico"))
+    session.add(Mensaje(cliente_id=cliente.id, rol="user", contenido="Quiero cita"))
+    session.add(Mensaje(cliente_id=cliente.id, rol=ROL_PODOLOGO, contenido="Ahora te atiendo"))
+    session.add(Mensaje(cliente_id=cliente.id, rol=ROL_BOT, contenido="Claro, dime el dia"))
+    session.commit()
+
+    historial = agente._historial(session, cliente.id)
+
+    assert all(m["role"] in ("user", "assistant") for m in historial)
+    assert historial[0]["role"] == "user"  # la API exige empezar con user
+    assert [m["role"] for m in historial] == ["user", "assistant", "assistant"]

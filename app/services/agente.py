@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import ROL_BOT, ROL_CLIENTE, Cliente, Mensaje
+from app.models import ROL_BOT, ROL_CLIENTE, ROL_PODOLOGO, Cliente, Mensaje
 from app.services import agenda
 from app.services.config_repo import get_timezone, modelo_claude
 
@@ -315,6 +315,12 @@ def resolver_cliente(session: Session, telefono: str, nombre: str | None = None)
     return cliente
 
 
+# La API de Claude solo acepta roles user/assistant: lo que el podologo escribe a
+# mano desde su app (rol podologo_manual) se presenta como turno del asistente,
+# porque para el cliente es una respuesta de la clinica.
+_ROL_API = {ROL_CLIENTE: "user", ROL_BOT: "assistant", ROL_PODOLOGO: "assistant"}
+
+
 def _historial(session: Session, cliente_id: int) -> list[dict[str, str]]:
     stmt = (
         select(Mensaje)
@@ -324,7 +330,14 @@ def _historial(session: Session, cliente_id: int) -> list[dict[str, str]]:
     )
     recientes = list(session.scalars(stmt).all())
     recientes.reverse()
-    return [{"role": m.rol, "content": m.contenido} for m in recientes]
+    mensajes = [
+        {"role": _ROL_API.get(m.rol, "user"), "content": m.contenido} for m in recientes
+    ]
+    # La API exige que el primer mensaje sea del usuario; se descartan turnos
+    # iniciales del asistente (p. ej. un saludo automatico previo al historial).
+    while mensajes and mensajes[0]["role"] != "user":
+        mensajes.pop(0)
+    return mensajes
 
 
 def procesar_mensaje(
