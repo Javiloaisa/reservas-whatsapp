@@ -82,13 +82,18 @@ TOOLS: list[dict[str, Any]] = [
         "name": "cancelar_cita",
         "description": (
             "Cancela una cita futura del propio cliente. Indicar el id de la cita, o bien la fecha "
-            "(YYYY-MM-DD) de la cita a cancelar."
+            "(YYYY-MM-DD) y la hora (HH:MM) de la cita a cancelar. Tambien localiza citas que el "
+            "cliente reservo directamente con el podologo (para esas la hora exacta es obligatoria)."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "cita_id": {"type": "integer"},
                 "fecha": {"type": "string", "description": "Fecha de la cita en formato YYYY-MM-DD"},
+                "hora": {
+                    "type": "string",
+                    "description": "Hora de la cita en formato HH:MM (24h, hora local)",
+                },
             },
         },
     },
@@ -217,21 +222,33 @@ def _ejecutar_tool(
 
         if nombre_tool == "cancelar_cita":
             fecha = dt.date.fromisoformat(args["fecha"]) if args.get("fecha") else None
-            if dry_run:
-                cita = agenda.simular_cancelar_cita(
-                    session, cita_id=args.get("cita_id"), telefono=telefono, fecha=fecha
+            try:
+                if dry_run:
+                    cita = agenda.simular_cancelar_cita(
+                        session, cita_id=args.get("cita_id"), telefono=telefono, fecha=fecha
+                    )
+                    return (
+                        json.dumps({"ok": True, "simulado": True, "cita_id": cita.id}, ensure_ascii=False),
+                        False,
+                    )
+                cita = agenda.cancelar_cita(
+                    session,
+                    cita_id=args.get("cita_id"),
+                    telefono=telefono,
+                    fecha=fecha,
                 )
-                return (
-                    json.dumps({"ok": True, "simulado": True, "cita_id": cita.id}, ensure_ascii=False),
-                    False,
-                )
-            cita = agenda.cancelar_cita(
-                session,
-                cita_id=args.get("cita_id"),
-                telefono=telefono,
-                fecha=fecha,
-            )
-            return json.dumps({"ok": True, "cita_id": cita.id, "estado": cita.estado}, ensure_ascii=False), False
+                return json.dumps({"ok": True, "cita_id": cita.id, "estado": cita.estado}, ensure_ascii=False), False
+            except agenda.CitaNoEncontrada:
+                # Sin cita en la BD: puede ser una cita apuntada a mano por el
+                # podologo en su Calendar. Hace falta la hora exacta para buscarla.
+                if fecha is None or not args.get("hora"):
+                    raise
+                inicio_iso = f"{args['fecha']}T{args['hora']}"
+                if dry_run:
+                    info = agenda.simular_cancelar_cita_manual(session, telefono, inicio_iso)
+                    return json.dumps({"ok": True, "simulado": True, **info}, ensure_ascii=False), False
+                info = agenda.cancelar_cita_manual(session, telefono, inicio_iso)
+                return json.dumps({"ok": True, "origen": "agenda_podologo", **info}, ensure_ascii=False), False
 
         return f"Herramienta desconocida: {nombre_tool}", True
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import unicodedata
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -405,6 +406,74 @@ def cancelar_cita(
     session.commit()
     log.info("Cita %s cancelada", cita.id)
     return cita
+
+
+# --------------------------------------------------------------------------- #
+#  Citas apuntadas a mano en Google Calendar (no existen en la BD)
+# --------------------------------------------------------------------------- #
+def _sin_acentos(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", texto.lower()) if not unicodedata.combining(c)
+    )
+
+
+def _localizar_evento_manual(
+    session: Session, telefono: str, inicio_iso: str
+) -> tuple[str, str, dt.datetime]:
+    """Localiza en Google Calendar la cita manual del cliente: (event_id, titulo, inicio_utc).
+
+    Salvaguardas para no tocar la cita de otra persona: hace falta la hora EXACTA
+    del evento y que el nombre del cliente (BD/perfil de WhatsApp) aparezca en el
+    titulo (el podologo apunta "Nombre Apellido - Servicio"). Si algo no cuadra,
+    CitaNoEncontrada con un mensaje que deriva al podologo.
+    """
+    _DERIVAR = "Mejor que ese cambio te lo confirme el podologo por este mismo chat."
+
+    tz = get_timezone(session)
+    inicio_utc = _parse_inicio(inicio_iso, tz)
+    if inicio_utc <= _utcnow():
+        raise SlotNoDisponible("Solo se pueden cancelar citas futuras.")
+
+    cliente = session.scalar(select(Cliente).where(Cliente.telefono == telefono))
+    nombre = (cliente.nombre or "").strip() if cliente else ""
+    if len(nombre) < 3:
+        raise CitaNoEncontrada(f"No puedo verificar a nombre de quien esta esa cita. {_DERIVAR}")
+
+    try:
+        eventos = calendar_gcal.eventos_en(inicio_utc)
+    except Exception as exc:  # noqa: BLE001 - gcal caido: derivar, no romper
+        log.warning("No se pudo buscar la cita manual en Calendar: %s", exc)
+        raise CitaNoEncontrada(f"Ahora mismo no puedo consultar la agenda. {_DERIVAR}") from exc
+
+    candidatos = [
+        (event_id, titulo, ini)
+        for event_id, titulo, ini, _fin in eventos
+        if event_id and _sin_acentos(nombre.split()[0]) in _sin_acentos(titulo)
+    ]
+    if len(candidatos) != 1:
+        raise CitaNoEncontrada(f"No encuentro una cita a tu nombre a esa hora. {_DERIVAR}")
+    return candidatos[0]
+
+
+def simular_cancelar_cita_manual(session: Session, telefono: str, inicio_iso: str) -> dict:
+    """Version de solo lectura para el modo sombra: localiza y valida, no borra."""
+    tz = get_timezone(session)
+    _event_id, _titulo, inicio_utc = _localizar_evento_manual(session, telefono, inicio_iso)
+    return {"inicio": inicio_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M")}
+
+
+def cancelar_cita_manual(session: Session, telefono: str, inicio_iso: str) -> dict:
+    """Cancela (borra del Calendar) una cita que el podologo apunto a mano."""
+    tz = get_timezone(session)
+    event_id, titulo, inicio_utc = _localizar_evento_manual(session, telefono, inicio_iso)
+    try:
+        calendar_gcal.delete_event(event_id)
+    except Exception as exc:  # noqa: BLE001
+        raise AgendaError(
+            "No he podido cancelarla ahora mismo; el podologo lo hara por este chat."
+        ) from exc
+    log.info("Cita manual cancelada en Calendar: %s (%s)", titulo, inicio_utc.isoformat())
+    return {"inicio": inicio_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M")}
 
 
 def listar_citas(

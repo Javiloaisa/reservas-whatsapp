@@ -80,6 +80,47 @@ def eventos_ocupados(
     return ocupados
 
 
+def eventos_en(
+    inicio: dt.datetime,
+) -> list[tuple[str | None, str, dt.datetime, dt.datetime]]:
+    """Eventos cuyo inicio coincide exactamente con `inicio`: (id, titulo, ini, fin) en UTC.
+
+    Para localizar citas que el podologo apunto A MANO cuando un cliente pide
+    cancelarlas o cambiarlas (no existen en la BD). Vacio en modo stub.
+    """
+    if not settings.gcal_enabled:
+        return []
+
+    inicio_utc = inicio.astimezone(dt.timezone.utc)
+    resp = (
+        _service()
+        .events()
+        .list(
+            calendarId=settings.google_calendar_id,
+            timeMin=inicio_utc.isoformat(),
+            timeMax=(inicio_utc + dt.timedelta(minutes=1)).isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=25,
+        )
+        .execute()
+    )
+
+    encontrados: list[tuple[str | None, str, dt.datetime, dt.datetime]] = []
+    for ev in resp.get("items", []):
+        if ev.get("status") == "cancelled" or ev.get("transparency") == "transparent":
+            continue
+        ini, fin = ev.get("start") or {}, ev.get("end") or {}
+        if "dateTime" not in ini or "dateTime" not in fin:
+            continue  # los eventos de dia completo no son citas de cliente
+        s = dt.datetime.fromisoformat(ini["dateTime"]).astimezone(dt.timezone.utc)
+        if s != inicio_utc:
+            continue
+        e = dt.datetime.fromisoformat(fin["dateTime"]).astimezone(dt.timezone.utc)
+        encontrados.append((ev.get("id"), ev.get("summary") or "", s, e))
+    return encontrados
+
+
 def create_event(
     summary: str,
     start: dt.datetime,
