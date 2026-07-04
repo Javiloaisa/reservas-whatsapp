@@ -1,8 +1,9 @@
-# Avisos programados (fase 5). Instalar con: crontab -u agente deploy/crontab.example
+# Avisos programados (§11 v2). Instalar con: crontab -u agente deploy/crontab.example
 # Ajusta la ruta /opt/agente-podologo si despliegas en otro sitio.
+# El servidor debe estar en hora Europe/Madrid (o ajustar la hora de cron en consecuencia).
 
-# Resumen diario al podologo (una vez al dia, 20:30 hora del servidor).
-30 20 * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
+# Agenda del dia al podologo (L-V a las 08:00, antes de abrir consulta).
+0 8 * * 1-5 cd /opt/agente-podologo && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
 
 # Recordatorio 24 h (cada hora; idempotente, solo avisa a las citas en la ventana 23-25 h).
 0 * * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> /opt/agente-podologo/cron.log 2>&1

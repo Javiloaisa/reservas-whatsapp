@@ -1,8 +1,9 @@
-"""Entrypoint de cron: enviar el resumen diario al podologo (ejecutar 1 vez/dia, p.ej. 20:30).
+"""Entrypoint de cron: enviar la agenda del dia al podologo (§11 v2: L-V a las 08:00).
 
     python -m scripts.resumen_diario
 
-Envia al numero de `config.podologo_whatsapp` la plantilla con las citas reservadas hoy.
+Envia al numero de `config.podologo_whatsapp` la plantilla con las citas cuyo INICIO
+cae hoy (hora, nombre, servicio) - la agenda del dia, no las reservas hechas hoy.
 """
 
 from __future__ import annotations

@@ -112,7 +112,7 @@ def _resumen_texto(citas: list[Cita], tz) -> str:  # noqa: ANN001
 
 
 def enviar_resumen_diario(session: Session) -> bool:
-    """Envia al podologo el resumen de las citas reservadas (creadas) hoy.
+    """Envia al podologo la agenda del dia: citas cuyo INICIO cae hoy (§11 v2).
 
     Devuelve True si se envio, False si no hay numero de podologo configurado.
     """
@@ -125,8 +125,8 @@ def enviar_resumen_diario(session: Session) -> bool:
         session.scalars(
             select(Cita)
             .where(
-                Cita.creado_en >= inicio_dia,
-                Cita.creado_en < fin_dia,
+                Cita.inicio >= inicio_dia,
+                Cita.inicio < fin_dia,
                 Cita.estado != ESTADO_CANCELADA,
             )
             .order_by(Cita.inicio)
