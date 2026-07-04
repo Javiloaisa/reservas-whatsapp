@@ -81,6 +81,9 @@ async def recibir_webhook(request: Request, background: BackgroundTasks) -> Resp
         log.warning("Webhook con firma invalida o ausente; se rechaza (403)")
         return Response(status_code=403)
 
+    # Payload crudo solo en DEBUG (§14: contiene datos personales, nunca en INFO).
+    log.debug("Payload de webhook: %s", body.decode("utf-8", errors="replace"))
+
     try:
         payload = json.loads(body)
     except (ValueError, TypeError):
