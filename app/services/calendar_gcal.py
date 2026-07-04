@@ -14,6 +14,7 @@ import datetime as dt
 import logging
 from functools import lru_cache
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.config import settings
 
@@ -32,6 +33,51 @@ def _service() -> Any:
         settings.google_credentials_file, scopes=_SCOPES
     )
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+
+def eventos_ocupados(
+    desde: dt.datetime, hasta: dt.datetime
+) -> list[tuple[str | None, dt.datetime, dt.datetime]]:
+    """Eventos del calendario que solapan [desde, hasta): (event_id, inicio, fin) en UTC.
+
+    El podologo tambien apunta citas A MANO en su Calendar; la agenda debe
+    tratarlas como huecos ocupados aunque no existan en la BD. Los eventos de
+    dia completo (vacaciones, festivos) bloquean el dia entero en hora local.
+    Vacio en modo stub.
+    """
+    if not settings.gcal_enabled:
+        return []
+
+    resp = (
+        _service()
+        .events()
+        .list(
+            calendarId=settings.google_calendar_id,
+            timeMin=desde.astimezone(dt.timezone.utc).isoformat(),
+            timeMax=hasta.astimezone(dt.timezone.utc).isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=250,
+        )
+        .execute()
+    )
+
+    tz_local = ZoneInfo(settings.timezone)
+    ocupados: list[tuple[str | None, dt.datetime, dt.datetime]] = []
+    for ev in resp.get("items", []):
+        if ev.get("status") == "cancelled" or ev.get("transparency") == "transparent":
+            continue  # borrados o marcados como "libre"
+        ini, fin = ev.get("start") or {}, ev.get("end") or {}
+        if "dateTime" in ini and "dateTime" in fin:
+            s = dt.datetime.fromisoformat(ini["dateTime"])
+            e = dt.datetime.fromisoformat(fin["dateTime"])
+        elif "date" in ini and "date" in fin:  # evento de dia completo
+            s = dt.datetime.combine(dt.date.fromisoformat(ini["date"]), dt.time.min, tzinfo=tz_local)
+            e = dt.datetime.combine(dt.date.fromisoformat(fin["date"]), dt.time.min, tzinfo=tz_local)
+        else:
+            continue
+        ocupados.append((ev.get("id"), s.astimezone(dt.timezone.utc), e.astimezone(dt.timezone.utc)))
+    return ocupados
 
 
 def create_event(

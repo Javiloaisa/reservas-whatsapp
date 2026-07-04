@@ -3,6 +3,10 @@
 Unica via por la que se calcula disponibilidad y se mutan citas. El agente solo
 puede tocar el estado a traves de estas funciones (via tool use), nunca directamente.
 
+Fuentes de ocupacion: horarios de apertura, bloqueos, citas de la BD y ademas los
+EVENTOS de Google Calendar (el podologo apunta citas a mano alli; requisito del
+usuario 2026-07-04: nunca ofrecer un hueco ya cogido en el Calendar).
+
 Tiempo:
 - Los `horarios` se interpretan en la zona horaria de `config.timezone` (hora local
   de la clinica). Las citas y bloqueos se almacenan en UTC-aware.
@@ -94,6 +98,31 @@ def _bloqueos_del_rango(session: Session, desde_utc: dt.datetime, hasta_utc: dt.
     return list(session.scalars(stmt).all())
 
 
+def _ocupados_gcal(
+    desde_utc: dt.datetime,
+    hasta_utc: dt.datetime,
+    excluir_event_id: str | None = None,
+) -> list[tuple[dt.datetime, dt.datetime]]:
+    """Intervalos ocupados en Google Calendar (citas que el podologo apunta a mano).
+
+    Best-effort: si Calendar no responde se loguea y se sigue solo con la BD
+    (mejor arriesgar un solape improbable que tumbar la reserva). Los eventos
+    creados por el propio bot tambien estan en la BD, asi que contarlos dos
+    veces es inocuo; `excluir_event_id` evita que una cita se bloquee a si
+    misma al reprogramarla.
+    """
+    try:
+        eventos = calendar_gcal.eventos_ocupados(desde_utc, hasta_utc)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("No se pudo consultar Google Calendar; disponibilidad solo con BD: %s", exc)
+        return []
+    return [
+        (ini, fin)
+        for event_id, ini, fin in eventos
+        if excluir_event_id is None or event_id != excluir_event_id
+    ]
+
+
 def _reservado(cita: Cita) -> tuple[dt.datetime, dt.datetime]:
     """Intervalo ocupado por una cita = [inicio, fin + buffer del servicio]."""
     buffer = dt.timedelta(minutes=cita.servicio.buffer_min)
@@ -134,6 +163,8 @@ def huecos_libres(
 
     reservados = [_reservado(c) for c in _citas_del_rango(session, desde_utc, hasta_utc)]
     bloqueos = [(b.inicio, b.fin) for b in _bloqueos_del_rango(session, desde_utc, hasta_utc)]
+    # Citas apuntadas a mano en Google Calendar: tambien ocupan hueco.
+    bloqueos += _ocupados_gcal(desde_utc, hasta_utc)
     ahora_utc = _utcnow()
 
     huecos: list[dt.datetime] = []
@@ -164,8 +195,10 @@ def _slot_libre(
     fin_utc: dt.datetime,
     tz: ZoneInfo,
     excluir_cita_id: int | None = None,
+    excluir_event_id: str | None = None,
 ) -> bool:
-    """Revalida que [inicio, fin] sea un hueco valido (horario, bloqueos, citas)."""
+    """Revalida que [inicio, fin] sea un hueco valido (horario, bloqueos, citas
+    de la BD y eventos de Google Calendar)."""
     fecha_local = inicio_utc.astimezone(tz).date()
     buf = dt.timedelta(minutes=servicio.buffer_min)
 
@@ -196,6 +229,11 @@ def _slot_libre(
             continue
         r0, r1 = _reservado(cita)
         if _overlap(inicio_utc, fin_utc + buf, r0, r1):
+            return False
+
+    # 4) No solapa eventos de Google Calendar (citas apuntadas a mano).
+    for g0, g1 in _ocupados_gcal(inicio_utc, fin_utc, excluir_event_id=excluir_event_id):
+        if _overlap(inicio_utc, fin_utc, g0, g1):
             return False
 
     return True
@@ -420,7 +458,10 @@ def actualizar_cita(
         nuevo_fin = nuevo_inicio + dt.timedelta(minutes=servicio.duracion_min)
         if nuevo_inicio <= _utcnow():
             raise SlotNoDisponible("La nueva hora ya ha pasado.")
-        if not _slot_libre(session, servicio, nuevo_inicio, nuevo_fin, tz, excluir_cita_id=cita.id):
+        if not _slot_libre(
+            session, servicio, nuevo_inicio, nuevo_fin, tz,
+            excluir_cita_id=cita.id, excluir_event_id=cita.gcal_event_id,
+        ):
             raise SlotNoDisponible("La nueva hora no esta disponible.")
         cita.inicio = nuevo_inicio
         cita.fin = nuevo_fin

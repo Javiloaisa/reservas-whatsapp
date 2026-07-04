@@ -29,7 +29,6 @@ SERVICIOS = [
     ("Exploración biomecánica + análisis de la carrera", 90, 0, None),
     ("Entrega de resultados", 30, 0, None),
     ("Revisión soportes plantares", 15, 0, None),
-    ("Revisión quiropodia", 15, 0, None),
     ("Vendaje deportivo", 15, 0, None),
     ("Cura papiloma", 15, 0, None),
     ("Silicona simple", 15, 0, None),
