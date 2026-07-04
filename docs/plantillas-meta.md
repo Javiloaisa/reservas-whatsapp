@@ -46,7 +46,12 @@ Si necesitas cambiar o cancelar la cita, responde a este mensaje.
 
 ```
 Buenos días. Agenda de hoy en la clínica: {{1}}
+
+¡Buen día!
 ```
+
+> Meta no permite variables al principio o final del mensaje: el "¡Buen día!"
+> final es necesario para que la plantilla pase la validación.
 
 **Valor de ejemplo para la revisión:**
 - {{1}}: `3 citas: 09:00 Quiropodia (María López); 10:30 Primera visita (Juan Ruiz); 16:00 Ortonixia (Ana Gil)`
