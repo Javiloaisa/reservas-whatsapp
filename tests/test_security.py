@@ -110,6 +110,6 @@ def test_guardrail_no_aborta_en_debug(monkeypatch: pytest.MonkeyPatch) -> None:
 
 # --- El panel exige sesion ---------------------------------------------------
 def test_admin_redirige_a_login_sin_sesion() -> None:
-    r = TestClient(app, follow_redirects=False).get("/admin/agenda")
+    r = TestClient(app, follow_redirects=False).get("/admin/conversaciones")
     assert r.status_code == 303
     assert r.headers["location"] == "/admin/login"

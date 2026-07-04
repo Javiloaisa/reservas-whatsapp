@@ -22,20 +22,13 @@ from sqlalchemy.orm import Session
 
 from app.deps import SESSION_KEY, get_db, require_admin_html
 from app.models import (
-    ESTADO_CANCELADA,
-    ESTADO_COMPLETADA,
-    ESTADO_CONFIRMADA,
-    ESTADO_NO_SHOW,
     Bloqueo,
-    Cita,
     Cliente,
     Horario,
     Mensaje,
-    Servicio,
     UsuarioAdmin,
 )
 from app.security import verify_password
-from app.services import agenda
 from app.services.config_repo import (
     all_config,
     get_timezone,
@@ -50,7 +43,6 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-ESTADOS = [ESTADO_CONFIRMADA, ESTADO_CANCELADA, ESTADO_COMPLETADA, ESTADO_NO_SHOW]
 
 
 # --------------------------------------------------------------------------- #
@@ -84,7 +76,7 @@ def _redirect(path: str, *, msg: str | None = None, error: str | None = None) ->
 # --------------------------------------------------------------------------- #
 @router.get("/", include_in_schema=False)
 def index() -> RedirectResponse:
-    return RedirectResponse("/admin/agenda", status_code=303)
+    return RedirectResponse("/admin/conversaciones", status_code=303)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -103,204 +95,13 @@ def login(
     if admin is None or not verify_password(password, admin.password_hash):
         return _redirect("/admin/login", error="Credenciales incorrectas")
     request.session[SESSION_KEY] = admin.id
-    return RedirectResponse("/admin/agenda", status_code=303)
+    return RedirectResponse("/admin/conversaciones", status_code=303)
 
 
 @router.get("/logout")
 def logout(request: Request) -> RedirectResponse:
     request.session.clear()
     return RedirectResponse("/admin/login", status_code=303)
-
-
-# --------------------------------------------------------------------------- #
-#  Agenda
-# --------------------------------------------------------------------------- #
-@router.get("/agenda", response_class=HTMLResponse)
-def agenda_page(
-    request: Request,
-    estado: str | None = None,
-    desde: str | None = None,
-    msg: str | None = None,
-    error: str | None = None,
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> HTMLResponse:
-    tz = get_timezone(db)
-    ahora = _utcnow()
-
-    desde_dt: dt.datetime | None = None
-    if desde:
-        try:
-            d = dt.date.fromisoformat(desde)
-            desde_dt = dt.datetime.combine(d, dt.time.min, tzinfo=tz).astimezone(dt.timezone.utc)
-        except ValueError:
-            desde = None
-
-    citas = agenda.listar_citas(db, desde=desde_dt, estado=estado or None)
-    filas = [
-        {
-            "id": c.id,
-            "inicio_str": _fmt(c.inicio, tz),
-            "servicio": c.servicio.nombre,
-            "cliente_nombre": c.cliente.nombre,
-            "cliente_telefono": c.cliente.telefono,
-            "estado": c.estado,
-            "es_futura": c.inicio > ahora,
-        }
-        for c in citas
-    ]
-
-    return templates.TemplateResponse(
-        request,
-        "agenda.html",
-        {
-            "citas": filas,
-            "servicios": agenda.listar_servicios_activos(db),
-            "estados": ESTADOS,
-            "filtro_estado": estado or "",
-            "filtro_desde": desde or "",
-            "tz": str(tz),
-            "msg": msg,
-            "error": error,
-        },
-    )
-
-
-@router.post("/citas")
-def crear_cita(
-    telefono: str = Form(...),
-    servicio_id: int = Form(...),
-    inicio: str = Form(...),
-    nombre: str = Form(""),
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    try:
-        agenda.crear_cita(
-            db,
-            telefono=telefono.strip(),
-            servicio_id=servicio_id,
-            inicio_iso=inicio,
-            nombre=nombre.strip() or None,
-        )
-    except agenda.AgendaError as exc:
-        return _redirect("/admin/agenda", error=str(exc))
-    return _redirect("/admin/agenda", msg="Cita creada.")
-
-
-@router.post("/citas/{cita_id}/estado")
-def cambiar_estado(
-    cita_id: int,
-    estado: str = Form(...),
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    try:
-        agenda.actualizar_cita(db, cita_id, estado=estado)
-    except agenda.AgendaError as exc:
-        return _redirect("/admin/agenda", error=str(exc))
-    return _redirect("/admin/agenda", msg="Estado actualizado.")
-
-
-@router.post("/citas/{cita_id}/reprogramar")
-def reprogramar(
-    cita_id: int,
-    nuevo_inicio: str = Form(...),
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    try:
-        agenda.actualizar_cita(db, cita_id, nuevo_inicio_iso=nuevo_inicio)
-    except agenda.AgendaError as exc:
-        return _redirect("/admin/agenda", error=str(exc))
-    return _redirect("/admin/agenda", msg="Cita reprogramada.")
-
-
-@router.post("/citas/{cita_id}/cancelar")
-def cancelar(
-    cita_id: int,
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    try:
-        agenda.cancelar_cita(db, cita_id=cita_id)
-    except agenda.AgendaError as exc:
-        return _redirect("/admin/agenda", error=str(exc))
-    return _redirect("/admin/agenda", msg="Cita cancelada.")
-
-
-# --------------------------------------------------------------------------- #
-#  Servicios
-# --------------------------------------------------------------------------- #
-@router.get("/servicios", response_class=HTMLResponse)
-def servicios_page(
-    request: Request,
-    msg: str | None = None,
-    error: str | None = None,
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> HTMLResponse:
-    servicios = list(db.scalars(select(Servicio).order_by(Servicio.id)).all())
-    return templates.TemplateResponse(
-        request,
-        "servicios.html",
-        {"servicios": servicios, "msg": msg, "error": error},
-    )
-
-
-@router.post("/servicios")
-def crear_servicio(
-    nombre: str = Form(...),
-    duracion_min: int = Form(...),
-    buffer_min: int = Form(0),
-    precio: str = Form(""),
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    servicio = Servicio(
-        nombre=nombre.strip(),
-        duracion_min=duracion_min,
-        buffer_min=buffer_min,
-        precio=float(precio) if precio.strip() else None,
-    )
-    db.add(servicio)
-    db.commit()
-    return _redirect("/admin/servicios", msg="Servicio creado.")
-
-
-@router.post("/servicios/{servicio_id}")
-def editar_servicio(
-    servicio_id: int,
-    nombre: str = Form(...),
-    duracion_min: int = Form(...),
-    buffer_min: int = Form(0),
-    precio: str = Form(""),
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    servicio = db.get(Servicio, servicio_id)
-    if servicio is None:
-        return _redirect("/admin/servicios", error="Servicio no encontrado.")
-    servicio.nombre = nombre.strip()
-    servicio.duracion_min = duracion_min
-    servicio.buffer_min = buffer_min
-    servicio.precio = float(precio) if precio.strip() else None
-    db.commit()
-    return _redirect("/admin/servicios", msg="Servicio actualizado.")
-
-
-@router.post("/servicios/{servicio_id}/baja")
-def baja_servicio(
-    servicio_id: int,
-    db: Session = Depends(get_db),
-    _: UsuarioAdmin = Depends(require_admin_html),
-) -> RedirectResponse:
-    servicio = db.get(Servicio, servicio_id)
-    if servicio is None:
-        return _redirect("/admin/servicios", error="Servicio no encontrado.")
-    servicio.activo = False
-    db.commit()
-    return _redirect("/admin/servicios", msg="Servicio dado de baja.")
 
 
 # --------------------------------------------------------------------------- #
