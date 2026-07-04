@@ -35,7 +35,7 @@ Clasifica como `cita` si el mensaje busca alguna de estas cosas:
 - Pedir o reservar una cita, hora o visita ("querría pedir hora", "¿me puedes coger para el jueves?").
 - Cambiar o mover una cita existente ("¿puedo pasar la cita del martes al viernes?").
 - Cancelar o anular una cita ("no podré venir mañana").
-- Preguntar disponibilidad u horarios de atención ("¿qué horario tenéis?", "¿abrís los sábados?", "¿tienes hueco esta semana?").
+- Preguntar disponibilidad u horarios de atención ("¿qué horario tenéis?", "¿abrís los sábados?", "¿tienes hueco esta semana?", "¿tienes cita?", "¿tienes disponibilidad?", "¿cuándo me puedes coger?"). Ojo: "¿tienes cita?" dirigido a la clínica significa "¿me puedes dar cita?" — es `cita`, no un saludo.
 - Confirmar o preguntar por una cita ya reservada ("¿mi cita era a las 10 o a las 10:30?", "confirmo la de mañana").
 - Preguntar duración o precio de un servicio en el contexto de querer reservarlo ("¿cuánto dura la quiropodia? ¿tienes hueco el jueves?").
 - **Continuar una conversación de cita en curso.** Si en el CONTEXTO el bot o el cliente estaban gestionando una cita, mensajes cortos como "mejor a las 10", "vale", "sí", "el jueves entonces", "perfecto", "¿y por la tarde?" SON `cita`, aunque sueltos parezcan ambiguos.
@@ -60,7 +60,7 @@ Clasifica como `duda` cuando no puedas decidir con confianza. Ejemplos:
 - Mensajes ambiguos sin contexto ("hola, una pregunta", "¿estás?", "necesito hablar contigo").
 - Mensajes que mezclan consulta médica y cita a partes iguales y no hay contexto que incline ("me duele mucho el pie, ¿qué hago?").
 - Notas de voz, imágenes, documentos o ubicaciones (llegarán descritos como `[audio]`, `[imagen]`, etc.): siempre `duda`.
-- Mensajes en un idioma que no entiendas con claridad.
+- Mensajes en un idioma que no entiendas con claridad. Excepción: el **catalán** es habitual en la clínica; clasifícalo con normalidad como si fuera español ("Tens hora per demà?", "Quan pots agafar-me?", "Em pots donar hora?" son `cita`).
 - Cualquier caso raro no cubierto por las listas anteriores.
 
 ## Reglas de desempate
@@ -93,6 +93,15 @@ Salida: {"intencion": "cita"}
 
 Entrada: MENSAJE NUEVO: [cliente]: hola, una cosa
 Salida: {"intencion": "duda"}
+
+Entrada: MENSAJE NUEVO: [cliente]: Hola Jesús! Tienes cita?
+Salida: {"intencion": "cita"}
+
+Entrada: MENSAJE NUEVO: [cliente]: Tienes disponibilidad??
+Salida: {"intencion": "cita"}
+
+Entrada: MENSAJE NUEVO: [cliente]: Quan pots agafar-me?
+Salida: {"intencion": "cita"}
 
 Entrada: MENSAJE NUEVO: [cliente]: ¿ya están mis plantillas?
 Salida: {"intencion": "no_cita"}
