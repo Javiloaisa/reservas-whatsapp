@@ -33,7 +33,10 @@ def _verificar_config_produccion() -> None:
         )
     if settings.admin_password == _ADMIN_PASSWORD_INSEGURO:
         log.critical("ADMIN_PASSWORD sigue siendo el de ejemplo; cambialo cuanto antes.")
-    if not settings.webhook_signature_required:
+    if settings.ycloud_enabled:
+        if not settings.ycloud_webhook_secret:
+            log.warning("YCLOUD_WEBHOOK_SECRET vacio: el webhook de YCloud no valida token.")
+    elif not settings.webhook_signature_required:
         log.warning("WHATSAPP_APP_SECRET vacio: los webhooks de Meta no se verifican por firma.")
 
 

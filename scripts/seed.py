@@ -37,7 +37,9 @@ DIAS_LABORABLES = range(0, 5)
 
 CONFIG_DEFAULTS = {
     "timezone": settings.timezone,
-    "bot_activo": "true",
+    # Modo sombra por defecto (§12 v2): el pipeline corre entero pero no se envia
+    # nada hasta activarlo a mano tras revisar `log_sombra`.
+    "bot_activo": "false",
     "modelo_claude": settings.claude_model,
     "mensaje_bienvenida": (
         "Hola! Soy el asistente de la clinica de podologia. Puedo informarte de los "
@@ -45,6 +47,10 @@ CONFIG_DEFAULTS = {
     ),
     # Numero del podologo (internacional sin '+') para el resumen diario (fase 5). Placeholder.
     "podologo_whatsapp": "",
+    # Modo humano tras un eco del podologo (§5 v2): horas que el bot calla para ese cliente.
+    "intervalo_modo_humano_horas": "4",
+    # Palabra clave que el podologo escribe para reactivar el bot antes de tiempo (§5 v2).
+    "palabra_reactivacion": "#bot",
 }
 
 

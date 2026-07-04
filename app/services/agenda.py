@@ -223,6 +223,31 @@ def _parse_inicio(inicio_iso: str, tz: ZoneInfo) -> dt.datetime:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def _validar_hueco(
+    session: Session, servicio_id: int, inicio_iso: str
+) -> tuple[Servicio, dt.datetime, dt.datetime]:
+    """Valida (sin escribir) que el hueco este libre. Usado por `crear_cita` y por el
+    modo sombra (`simular_crear_cita`, §12 v2) para revisar disponibilidad en seco."""
+    tz = get_timezone(session)
+    servicio = _servicio_activo(session, servicio_id)
+    inicio_utc = _parse_inicio(inicio_iso, tz)
+    fin_utc = inicio_utc + dt.timedelta(minutes=servicio.duracion_min)
+
+    if inicio_utc <= _utcnow():
+        raise SlotNoDisponible("Esa hora ya ha pasado.")
+    if not _slot_libre(session, servicio, inicio_utc, fin_utc, tz):
+        raise SlotNoDisponible("Ese hueco ya no esta disponible.")
+    return servicio, inicio_utc, fin_utc
+
+
+def simular_crear_cita(session: Session, servicio_id: int, inicio_iso: str) -> dict:
+    """Version de solo lectura de `crear_cita` para el modo sombra (§12 v2):
+    valida el hueco pero no escribe en BD ni en Calendar."""
+    tz = get_timezone(session)
+    _servicio, inicio_utc, _fin_utc = _validar_hueco(session, servicio_id, inicio_iso)
+    return {"inicio": inicio_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M")}
+
+
 def crear_cita(
     session: Session,
     telefono: str,
@@ -236,17 +261,7 @@ def crear_cita(
     la revalidacion + serializacion de escrituras cubre el caso secuencial.
     Tras insertar, sincroniza con Google Calendar (best-effort).
     """
-    tz = get_timezone(session)
-    servicio = _servicio_activo(session, servicio_id)
-    inicio_utc = _parse_inicio(inicio_iso, tz)
-    fin_utc = inicio_utc + dt.timedelta(minutes=servicio.duracion_min)
-
-    if inicio_utc <= _utcnow():
-        raise SlotNoDisponible("Esa hora ya ha pasado.")
-
-    if not _slot_libre(session, servicio, inicio_utc, fin_utc, tz):
-        raise SlotNoDisponible("Ese hueco ya no esta disponible.")
-
+    servicio, inicio_utc, fin_utc = _validar_hueco(session, servicio_id, inicio_iso)
     cliente = _resolver_cliente(session, telefono, nombre)
 
     cita = Cita(
@@ -279,16 +294,14 @@ def crear_cita(
     return cita
 
 
-def cancelar_cita(
+def _localizar_cita_cancelable(
     session: Session,
     cita_id: int | None = None,
     telefono: str | None = None,
     fecha: dt.date | None = None,
 ) -> Cita:
-    """Cancela una cita futura. Identificable por id o por (telefono + fecha).
-
-    Solo cita futuras y, si se pasa telefono, del propio cliente.
-    """
+    """Busca y valida (sin mutar) la cita a cancelar. Identificable por id o por
+    (telefono + fecha). Solo citas futuras y, si se pasa telefono, del propio cliente."""
     tz = get_timezone(session)
     cita: Cita | None = None
 
@@ -319,6 +332,31 @@ def cancelar_cita(
         raise CitaNoEncontrada("Esa cita ya estaba cancelada.")
     if cita.inicio <= _utcnow():
         raise SlotNoDisponible("Solo se pueden cancelar citas futuras.")
+    return cita
+
+
+def simular_cancelar_cita(
+    session: Session,
+    cita_id: int | None = None,
+    telefono: str | None = None,
+    fecha: dt.date | None = None,
+) -> Cita:
+    """Version de solo lectura de `cancelar_cita` para el modo sombra (§12 v2):
+    localiza y valida la cita pero no la cancela de verdad."""
+    return _localizar_cita_cancelable(session, cita_id=cita_id, telefono=telefono, fecha=fecha)
+
+
+def cancelar_cita(
+    session: Session,
+    cita_id: int | None = None,
+    telefono: str | None = None,
+    fecha: dt.date | None = None,
+) -> Cita:
+    """Cancela una cita futura. Identificable por id o por (telefono + fecha).
+
+    Solo citas futuras y, si se pasa telefono, del propio cliente.
+    """
+    cita = _localizar_cita_cancelable(session, cita_id=cita_id, telefono=telefono, fecha=fecha)
 
     cita.estado = ESTADO_CANCELADA
     try:

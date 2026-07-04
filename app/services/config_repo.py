@@ -33,8 +33,22 @@ def all_config(session: Session) -> dict[str, str]:
 
 
 def bot_activo(session: Session) -> bool:
-    """`bot_activo` se almacena como 'true'/'false'. Por defecto activo."""
-    return (get_config(session, "bot_activo", "true") or "true").strip().lower() == "true"
+    """`bot_activo` se almacena como 'true'/'false'. Por defecto INACTIVO (modo sombra, §12 v2)."""
+    return (get_config(session, "bot_activo", "false") or "false").strip().lower() == "true"
+
+
+def intervalo_modo_humano_horas(session: Session) -> float:
+    """Horas que dura el modo humano tras un eco del podologo (§5 v2, default 4h)."""
+    valor = get_config(session, "intervalo_modo_humano_horas", "4")
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return 4.0
+
+
+def palabra_reactivacion(session: Session) -> str:
+    """Palabra clave que el podologo escribe para reactivar el bot antes de tiempo (§5 v2)."""
+    return get_config(session, "palabra_reactivacion", "#bot") or "#bot"
 
 
 def get_timezone(session: Session) -> ZoneInfo:

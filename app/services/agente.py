@@ -22,9 +22,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Cliente, Mensaje
+from app.models import ROL_BOT, ROL_CLIENTE, Cliente, Mensaje
 from app.services import agenda
-from app.services.config_repo import bot_activo, get_timezone, modelo_claude
+from app.services.config_repo import get_timezone, modelo_claude
 
 log = logging.getLogger("agente")
 
@@ -33,11 +33,6 @@ MAX_ITERACIONES_TOOLS = 6
 MAX_TOKENS = 1024
 
 DIAS_ES = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
-
-MENSAJE_ATENCION_MANUAL = (
-    "Gracias por tu mensaje. En este momento te atendera una persona del equipo. "
-    "Te responderemos lo antes posible."
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,8 +147,18 @@ def _system_prompt(session: Session, cliente: Cliente, es_nuevo: bool = False) -
 # --------------------------------------------------------------------------- #
 #  Ejecucion de herramientas (unica via de mutacion de estado)
 # --------------------------------------------------------------------------- #
-def _ejecutar_tool(session: Session, telefono: str, nombre_tool: str, args: dict[str, Any]) -> tuple[str, bool]:
-    """Ejecuta una herramienta y devuelve (contenido_para_el_modelo, es_error)."""
+def _ejecutar_tool(
+    session: Session,
+    telefono: str,
+    nombre_tool: str,
+    args: dict[str, Any],
+    dry_run: bool = False,
+) -> tuple[str, bool]:
+    """Ejecuta una herramienta y devuelve (contenido_para_el_modelo, es_error).
+
+    En `dry_run` (modo sombra, §12 v2), `crear_cita`/`cancelar_cita` solo validan:
+    no escriben en BD ni en Calendar.
+    """
     tz = get_timezone(session)
     try:
         if nombre_tool == "listar_servicios":
@@ -183,6 +188,13 @@ def _ejecutar_tool(session: Session, telefono: str, nombre_tool: str, args: dict
             return json.dumps(data, ensure_ascii=False), False
 
         if nombre_tool == "crear_cita":
+            if dry_run:
+                info = agenda.simular_crear_cita(
+                    session,
+                    servicio_id=int(args["servicio_id"]),
+                    inicio_iso=args["inicio_iso"],
+                )
+                return json.dumps({"ok": True, "simulado": True, **info}, ensure_ascii=False), False
             cita = agenda.crear_cita(
                 session,
                 telefono=telefono,
@@ -205,6 +217,14 @@ def _ejecutar_tool(session: Session, telefono: str, nombre_tool: str, args: dict
 
         if nombre_tool == "cancelar_cita":
             fecha = dt.date.fromisoformat(args["fecha"]) if args.get("fecha") else None
+            if dry_run:
+                cita = agenda.simular_cancelar_cita(
+                    session, cita_id=args.get("cita_id"), telefono=telefono, fecha=fecha
+                )
+                return (
+                    json.dumps({"ok": True, "simulado": True, "cita_id": cita.id}, ensure_ascii=False),
+                    False,
+                )
             cita = agenda.cancelar_cita(
                 session,
                 cita_id=args.get("cita_id"),
@@ -225,7 +245,13 @@ def _ejecutar_tool(session: Session, telefono: str, nombre_tool: str, args: dict
 # --------------------------------------------------------------------------- #
 #  Bucle de conversacion con Claude
 # --------------------------------------------------------------------------- #
-def _run_agent(session: Session, telefono: str, system: str, messages: list[dict[str, Any]]) -> str:
+def _run_agent(
+    session: Session,
+    telefono: str,
+    system: str,
+    messages: list[dict[str, Any]],
+    dry_run: bool = False,
+) -> str:
     client = _client()
     modelo = modelo_claude(session)
 
@@ -252,7 +278,9 @@ def _run_agent(session: Session, telefono: str, system: str, messages: list[dict
         tool_results = []
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use":
-                contenido, es_error = _ejecutar_tool(session, telefono, block.name, dict(block.input))
+                contenido, es_error = _ejecutar_tool(
+                    session, telefono, block.name, dict(block.input), dry_run=dry_run
+                )
                 tool_results.append(
                     {
                         "type": "tool_result",
@@ -275,12 +303,15 @@ def _texto_de(content: list[Any]) -> str:
 # --------------------------------------------------------------------------- #
 #  API publica
 # --------------------------------------------------------------------------- #
-def _resolver_cliente(session: Session, telefono: str) -> Cliente:
+def resolver_cliente(session: Session, telefono: str, nombre: str | None = None) -> Cliente:
+    """Busca el cliente por telefono o lo crea. Rellena `nombre` si aun no se conocia."""
     cliente = session.scalar(select(Cliente).where(Cliente.telefono == telefono))
     if cliente is None:
-        cliente = Cliente(telefono=telefono)
+        cliente = Cliente(telefono=telefono, nombre=nombre)
         session.add(cliente)
         session.flush()
+    elif nombre and not cliente.nombre:
+        cliente.nombre = nombre
     return cliente
 
 
@@ -301,21 +332,27 @@ def procesar_mensaje(
     telefono: str,
     texto: str,
     wa_message_id: str | None = None,
+    clasificacion: str | None = None,
+    dry_run: bool = False,
 ) -> str:
-    """Procesa un mensaje entrante y devuelve la respuesta a enviar al cliente.
+    """Procesa un mensaje ya clasificado como cita y devuelve la respuesta al cliente.
 
-    La deduplicacion por `wa_message_id` se hace en el webhook antes de llamar aqui.
+    La deduplicacion de eventos y las decisiones de modo sombra / modo humano /
+    clasificador viven en `services/pipeline.py` (§4 v2); esta funcion asume que
+    ya se decidio que el agente debe responder. En `dry_run` (modo sombra, §12 v2)
+    el agente corre igual pero las herramientas de escritura se ejecutan en seco.
     """
-    cliente = _resolver_cliente(session, telefono)
+    cliente = resolver_cliente(session, telefono)
 
-    # Bot pausado: atencion manual (sin caidas).
-    if not bot_activo(session):
-        session.add(Mensaje(cliente_id=cliente.id, rol="user", contenido=texto))
-        session.commit()
-        return MENSAJE_ATENCION_MANUAL
-
-    # Persistir el mensaje del usuario y construir historial (lo incluye).
-    session.add(Mensaje(cliente_id=cliente.id, rol="user", contenido=texto))
+    session.add(
+        Mensaje(
+            cliente_id=cliente.id,
+            rol=ROL_CLIENTE,
+            contenido=texto,
+            clasificacion=clasificacion,
+            message_id_proveedor=wa_message_id,
+        )
+    )
     session.flush()
     messages = _historial(session, cliente.id)
 
@@ -325,8 +362,8 @@ def procesar_mensaje(
     else:
         # Cliente nuevo = este es su primer mensaje registrado (transparencia RGPD).
         system = _system_prompt(session, cliente, es_nuevo=len(messages) <= 1)
-        respuesta = _run_agent(session, telefono, system, messages)
+        respuesta = _run_agent(session, telefono, system, messages, dry_run=dry_run)
 
-    session.add(Mensaje(cliente_id=cliente.id, rol="assistant", contenido=respuesta))
+    session.add(Mensaje(cliente_id=cliente.id, rol=ROL_BOT, contenido=respuesta))
     session.commit()
     return respuesta
