@@ -7,3 +7,6 @@
 
 # Recordatorio 24 h (cada hora; idempotente, solo avisa a las citas en la ventana 23-25 h).
 0 * * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> /opt/agente-podologo/cron.log 2>&1
+
+# Purga RGPD de mensajes/log_sombra (§14 v2; mensual, dia 1 a las 03:00).
+0 3 1 * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.purgar_mensajes >> /opt/agente-podologo/cron.log 2>&1

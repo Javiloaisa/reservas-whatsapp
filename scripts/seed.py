@@ -51,6 +51,8 @@ CONFIG_DEFAULTS = {
     "intervalo_modo_humano_horas": "4",
     # Palabra clave que el podologo escribe para reactivar el bot antes de tiempo (§5 v2).
     "palabra_reactivacion": "#bot",
+    # Retencion RGPD de mensajes/log_sombra en meses (§14 v2).
+    "retencion_mensajes_meses": "12",
 }
 
 
