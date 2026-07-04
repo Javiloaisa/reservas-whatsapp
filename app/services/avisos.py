@@ -34,7 +34,7 @@ log = logging.getLogger("avisos")
 
 # Nombres de las plantillas aprobadas en WhatsApp Manager (§8).
 TEMPLATE_RECORDATORIO = "recordatorio_cita"  # vars: {{1}}=nombre {{2}}=servicio {{3}}=hora
-TEMPLATE_RESUMEN = "resumen_diario"  # var: {{1}}=resumen
+TEMPLATE_RESUMEN = "resumen_dia"  # var: {{1}}=resumen (fin de dia; sustituye a resumen_diario)
 
 VENTANA_MIN_H = 23
 VENTANA_MAX_H = 25
@@ -112,7 +112,8 @@ def _resumen_texto(citas: list[Cita], tz) -> str:  # noqa: ANN001
 
 
 def enviar_resumen_diario(session: Session) -> bool:
-    """Envia al podologo la agenda del dia: citas cuyo INICIO cae hoy (§11 v2).
+    """Envia al podologo, al final del dia, las citas RESERVADAS hoy (decision del
+    usuario 2026-07-04: resumen de la actividad del agente, no agenda de manana).
 
     Devuelve True si se envio, False si no hay numero de podologo configurado.
     """
@@ -125,8 +126,8 @@ def enviar_resumen_diario(session: Session) -> bool:
         session.scalars(
             select(Cita)
             .where(
-                Cita.inicio >= inicio_dia,
-                Cita.inicio < fin_dia,
+                Cita.creado_en >= inicio_dia,
+                Cita.creado_en < fin_dia,
                 Cita.estado != ESTADO_CANCELADA,
             )
             .order_by(Cita.inicio)

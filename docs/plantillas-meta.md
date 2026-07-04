@@ -35,26 +35,31 @@ Si necesitas cambiar o cancelar la cita, responde a este mensaje.
 
 ---
 
-## 2. `resumen_diario`
+## 2. `resumen_dia`
 
-- **Nombre**: `resumen_diario`
+Resumen de FIN de dia (20:30): citas RESERVADAS hoy, no la agenda de mañana.
+(Sustituye a la plantilla `resumen_diario`, que quedó obsoleta en revisión al
+cambiar la semántica — las plantillas pendientes no se pueden editar y borrar
+una bloquea su nombre 30 días.)
+
+- **Nombre**: `resumen_dia`
 - **Categoría**: Utility (utilidad)
 - **Idioma**: Spanish (es)
-- **Variables**: `{{1}}` = resumen de la agenda en una línea
+- **Variables**: `{{1}}` = resumen de las reservas del día en una línea
 
 **Cuerpo:**
 
 ```
-Buenos días. Agenda de hoy en la clínica: {{1}}
+Hola, estas son las citas reservadas hoy en la clínica: {{1}}
 
-¡Buen día!
+¡Hasta mañana!
 ```
 
-> Meta no permite variables al principio o final del mensaje: el "¡Buen día!"
-> final es necesario para que la plantilla pase la validación.
+> Meta no permite variables al principio o final del mensaje: el cierre
+> "¡Hasta mañana!" es necesario para que pase la validación.
 
 **Valor de ejemplo para la revisión:**
-- {{1}}: `3 citas: 09:00 Quiropodia (María López); 10:30 Primera visita (Juan Ruiz); 16:00 Ortonixia (Ana Gil)`
+- {{1}}: `2 citas: 07/07 10:30 Quiropodia (María López); 09/07 16:00 Ortonixia (Juan Ruiz)`
 
 > Las variables de plantilla no admiten saltos de línea: el resumen va en una
 > sola línea, separado por punto y coma (así lo genera `avisos._resumen_texto`).

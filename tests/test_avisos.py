@@ -39,9 +39,11 @@ def _cliente(session, nombre: str) -> Cliente:
     return cliente
 
 
-def test_resumen_diario_incluye_citas_de_hoy_reservadas_ayer(
+def test_resumen_diario_incluye_solo_citas_reservadas_hoy(
     session, restaurar_podologo_whatsapp, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """El resumen de fin de dia lista las citas RESERVADAS hoy (aunque la cita sea
+    para otro dia), no la agenda de hoy (decision del usuario 2026-07-04)."""
     set_config(session, "podologo_whatsapp", "34699999999")
     session.commit()
 
@@ -53,18 +55,18 @@ def test_resumen_diario_incluye_citas_de_hoy_reservadas_ayer(
     manana_10am_utc = hoy_10am_utc + dt.timedelta(days=1)
     ayer_utc = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)
 
-    cliente_hoy = _cliente(session, "Reservada ayer, cita hoy")
+    cliente_vieja = _cliente(session, "Reservada ayer, cita hoy")
     session.add(
         Cita(
-            cliente_id=cliente_hoy.id, servicio_id=1, inicio=hoy_10am_utc,
+            cliente_id=cliente_vieja.id, servicio_id=1, inicio=hoy_10am_utc,
             fin=hoy_10am_utc + dt.timedelta(minutes=30), estado=ESTADO_CONFIRMADA,
             creado_en=ayer_utc,
         )
     )
-    cliente_manana = _cliente(session, "Cita manana")
+    cliente_nueva = _cliente(session, "Reservada hoy, cita manana")
     session.add(
         Cita(
-            cliente_id=cliente_manana.id, servicio_id=1, inicio=manana_10am_utc,
+            cliente_id=cliente_nueva.id, servicio_id=1, inicio=manana_10am_utc,
             fin=manana_10am_utc + dt.timedelta(minutes=30), estado=ESTADO_CONFIRMADA,
         )
     )
@@ -82,5 +84,5 @@ def test_resumen_diario_incluye_citas_de_hoy_reservadas_ayer(
 
     assert enviado is True
     texto = capturado["components"][0]["parameters"][0]["text"]
-    assert "Reservada ayer, cita hoy" in texto
-    assert "Cita manana" not in texto
+    assert "Reservada hoy, cita manana" in texto
+    assert "Reservada ayer, cita hoy" not in texto

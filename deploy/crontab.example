@@ -2,11 +2,11 @@
 # Ajusta la ruta /opt/agente-podologo si despliegas en otro sitio.
 #
 # El servidor va en UTC y su cron no soporta CRON_TZ: el resumen se dispara a las
-# 6:00 y 7:00 UTC y un guard deja pasar solo cuando son las 8:00 en Europe/Madrid
-# (6 UTC en verano CEST, 7 UTC en invierno CET).
+# 18:30 y 19:30 UTC y un guard deja pasar solo cuando son las 20:xx en Europe/Madrid
+# (18:30 UTC en verano CEST, 19:30 UTC en invierno CET).
 
-# Agenda del dia al podologo (L-V a las 08:00 hora de Madrid, antes de abrir consulta).
-0 6,7 * * 1-5 cd /opt/agente-podologo && [ "$(TZ=Europe/Madrid date +\%H)" = "08" ] && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
+# Resumen de fin de dia al podologo: citas reservadas hoy (L-V a las 20:30 hora de Madrid).
+30 18,19 * * 1-5 cd /opt/agente-podologo && [ "$(TZ=Europe/Madrid date +\%H)" = "20" ] && ./venv/bin/python -m scripts.resumen_diario >> /opt/agente-podologo/cron.log 2>&1
 
 # Recordatorio 24 h (cada hora; idempotente, solo avisa a las citas en la ventana 23-25 h).
 0 * * * * cd /opt/agente-podologo && ./venv/bin/python -m scripts.recordatorios >> /opt/agente-podologo/cron.log 2>&1
