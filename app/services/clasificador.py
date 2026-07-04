@@ -66,16 +66,16 @@ def _contexto(session: Session, cliente_id: int, excluir_id: int | None = None) 
     return "\n".join(f"{_ROL_TAG.get(m.rol, '[cliente]')}: {m.contenido}" for m in filas)
 
 
-def _parsear(texto: str) -> str:
-    """Extrae {"intencion": ...} de la salida del modelo; ante cualquier cosa rara, duda."""
+def _parsear(texto: str) -> str | None:
+    """Extrae {"intencion": ...} de la salida del modelo; None si no es parseable."""
     inicio, fin = texto.find("{"), texto.rfind("}")
     if inicio == -1 or fin <= inicio:
-        return CLASIFICACION_DUDA
+        return None
     try:
         etiqueta = json.loads(texto[inicio : fin + 1]).get("intencion", "")
     except (ValueError, AttributeError):
-        return CLASIFICACION_DUDA
-    return etiqueta if etiqueta in _ETIQUETAS else CLASIFICACION_DUDA
+        return None
+    return etiqueta if etiqueta in _ETIQUETAS else None
 
 
 def clasificar(
@@ -109,6 +109,7 @@ def clasificar(
         return CLASIFICACION_DUDA
 
     etiqueta = _parsear(salida)
-    if etiqueta == CLASIFICACION_DUDA and salida.strip():
+    if etiqueta is None:
         log.warning("Salida no parseable del clasificador: %r", salida[:200])
+        return CLASIFICACION_DUDA  # ante salida rara: silencio
     return etiqueta
