@@ -5,15 +5,13 @@ Ejecutar tras `alembic upgrade head`:
 
 Es idempotente: re-ejecutarlo no duplica datos.
 
-Datos placeholder (decisiones §16 sin respuesta del usuario; documentado en README):
-- Servicios: Quiropodia 30/0, Estudio biomecanico 45/0, Una encarnada 40/0, Revision 20/0.
-- Horario: L-V 9:00-14:00 y 16:00-20:00.
+Datos reales de la clinica Jesus Garcia Podoleg (§13 del CLAUDE.md v2).
+Precios pendientes (§16): quedan a NULL hasta que el podologo los aporte.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
 
 from sqlalchemy import func, select
 
@@ -23,17 +21,31 @@ from app.models import Horario, Servicio, UsuarioAdmin
 from app.security import hash_password
 from app.services.config_repo import get_config, set_config
 
-# (nombre, duracion_min, buffer_min, precio)  -- placeholders, ver §16
+# (nombre, duracion_min, buffer_min, precio) -- §13; precios pendientes (§16)
 SERVICIOS = [
-    ("Quiropodia", 30, 0, Decimal("30.00")),
-    ("Estudio biomecanico", 45, 0, Decimal("50.00")),
-    ("Una encarnada", 40, 0, Decimal("45.00")),
-    ("Revision", 20, 0, Decimal("15.00")),
+    ("Primera visita", 45, 0, None),
+    ("Quiropodia", 45, 0, None),
+    ("Exploración biomecánica", 60, 0, None),
+    ("Exploración biomecánica + análisis de la carrera", 90, 0, None),
+    ("Entrega de resultados", 30, 0, None),
+    ("Revisión soportes plantares", 15, 0, None),
+    ("Revisión quiropodia", 15, 0, None),
+    ("Vendaje deportivo", 15, 0, None),
+    ("Cura papiloma", 15, 0, None),
+    ("Silicona simple", 15, 0, None),
+    ("Silicona complicada", 30, 0, None),
+    ("Reconstrucción ungueal", 40, 0, None),
+    ("Ortonixia", 30, 0, None),
 ]
 
-# L-V (0..4), dos franjas: manana y tarde.
-FRANJAS = [(dt.time(9, 0), dt.time(14, 0)), (dt.time(16, 0), dt.time(20, 0))]
-DIAS_LABORABLES = range(0, 5)
+# dia_semana (0=lunes..6=domingo) -> franjas; sabado y domingo cerrado (§13)
+HORARIO_SEMANAL: dict[int, list[tuple[dt.time, dt.time]]] = {
+    0: [(dt.time(9, 0), dt.time(13, 30))],
+    1: [(dt.time(9, 0), dt.time(13, 30)), (dt.time(15, 0), dt.time(20, 0))],
+    2: [(dt.time(9, 0), dt.time(13, 30)), (dt.time(15, 0), dt.time(20, 0))],
+    3: [(dt.time(9, 0), dt.time(15, 0))],
+    4: [(dt.time(9, 0), dt.time(15, 0))],
+}
 
 CONFIG_DEFAULTS = {
     "timezone": settings.timezone,
@@ -70,8 +82,8 @@ def seed_horarios(session) -> None:
         print("horarios: ya existen, se omite")
         return
     n = 0
-    for dia in DIAS_LABORABLES:
-        for ini, fin in FRANJAS:
+    for dia, franjas in HORARIO_SEMANAL.items():
+        for ini, fin in franjas:
             session.add(Horario(dia_semana=dia, hora_inicio=ini, hora_fin=fin))
             n += 1
     print(f"horarios: insertadas {n} franjas (L-V)")
