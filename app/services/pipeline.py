@@ -45,6 +45,7 @@ def _reclamar_evento(session: Session, message_id: str) -> bool:
 def procesar_evento(evento: Evento) -> None:
     """Procesa un evento de webhook siguiendo el flujo del §4. Nunca lanza."""
     if isinstance(evento, Otro):
+        log.info("Evento de webhook no procesado (tipo=%s)", evento.tipo)
         return
 
     session = SessionLocal()

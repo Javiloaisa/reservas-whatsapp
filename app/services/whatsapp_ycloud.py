@@ -106,8 +106,8 @@ def parse_webhook(payload: dict[str, Any]) -> list[Any]:
 
     Tipos manejados:
     - whatsapp.inbound_message.received -> MensajeEntrante (mensaje del cliente).
-    - eventos de eco de la app del negocio (coexistencia; el objeto llega como
-      *businessAppMessage* o similar) -> EcoSaliente (lo escribio el podologo).
+    - whatsapp.smb.message.echoes (eco de la app del negocio, coexistencia)
+      -> EcoSaliente (lo escribio el podologo desde su app).
     - whatsapp.message.updated y demas -> Otro (estados de entrega, etc.).
     """
     from app.services.whatsapp import EcoSaliente, MensajeEntrante, Otro
@@ -131,12 +131,23 @@ def parse_webhook(payload: dict[str, Any]) -> list[Any]:
             )
         ]
 
-    # Ecos de la app WhatsApp Business del podologo (coexistencia). YCloud los
-    # entrega con el objeto del mensaje saliente; el nombre exacto del evento
-    # puede variar segun version del webhook -> deteccion defensiva.
-    if "business_app" in tipo_evento or "whatsappBusinessAppMessage" in payload:
+    # Ecos de la app WhatsApp Business del podologo (coexistencia). El evento
+    # documentado es whatsapp.smb.message.echoes; el nombre del objeto puede
+    # variar segun version del webhook -> deteccion defensiva por tipo y claves.
+    es_eco = (
+        "echo" in tipo_evento
+        or "smb.message" in tipo_evento
+        or "business_app" in tipo_evento
+        or any(
+            k in payload
+            for k in ("whatsappSmbMessageEcho", "whatsappMessageEcho", "whatsappBusinessAppMessage")
+        )
+    )
+    if es_eco:
         msg = (
-            payload.get("whatsappBusinessAppMessage")
+            payload.get("whatsappSmbMessageEcho")
+            or payload.get("whatsappMessageEcho")
+            or payload.get("whatsappBusinessAppMessage")
             or payload.get("whatsappMessage")
             or {}
         )

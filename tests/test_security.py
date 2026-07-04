@@ -39,7 +39,14 @@ def test_firma_valida_rechaza_incorrecta_o_ausente(monkeypatch: pytest.MonkeyPat
     assert not webhook._firma_valida(body, "sin-prefijo")
 
 
+def _modo_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fuerza el proveedor Meta (sin YCloud), independientemente del .env local."""
+    monkeypatch.setattr(settings, "ycloud_api_key", "")
+    monkeypatch.setattr(settings, "ycloud_webhook_secret", "")
+
+
 def test_webhook_rechaza_firma_invalida(monkeypatch: pytest.MonkeyPatch) -> None:
+    _modo_meta(monkeypatch)
     monkeypatch.setattr(settings, "whatsapp_app_secret", "s3cr3t")
     r = client.post(
         "/webhook", content=b'{"entry": []}', headers={"X-Hub-Signature-256": "sha256=bad"}
@@ -48,6 +55,7 @@ def test_webhook_rechaza_firma_invalida(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_webhook_acepta_firma_valida(monkeypatch: pytest.MonkeyPatch) -> None:
+    _modo_meta(monkeypatch)
     monkeypatch.setattr(settings, "whatsapp_app_secret", "s3cr3t")
     body = b'{"entry": []}'
     r = client.post(
@@ -58,8 +66,24 @@ def test_webhook_acepta_firma_valida(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_webhook_sin_app_secret_no_exige_firma(monkeypatch: pytest.MonkeyPatch) -> None:
+    _modo_meta(monkeypatch)
     monkeypatch.setattr(settings, "whatsapp_app_secret", "")
     r = client.post("/webhook", json={"entry": []})
+    assert r.status_code == 200
+
+
+# --- Token del webhook de YCloud (§8 v2) -------------------------------------
+def test_webhook_ycloud_rechaza_token_invalido(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ycloud_api_key", "k")
+    monkeypatch.setattr(settings, "ycloud_webhook_secret", "tok3n")
+    assert client.post("/webhook", json={"type": "x"}).status_code == 403
+    assert client.post("/webhook?token=malo", json={"type": "x"}).status_code == 403
+
+
+def test_webhook_ycloud_acepta_token_valido(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ycloud_api_key", "k")
+    monkeypatch.setattr(settings, "ycloud_webhook_secret", "tok3n")
+    r = client.post("/webhook?token=tok3n", json={"type": "x"})
     assert r.status_code == 200
 
 
