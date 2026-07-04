@@ -6,7 +6,7 @@ DEBEN enviarse con plantillas aprobadas (§8 / §A.4), no con texto libre. En mo
 
 Idempotencia:
 - Recordatorios: cada cita se marca `recordatorio='enviado'` tras enviarse; reejecutar
-  no reenvia. La ventana [ahora+23h, ahora+25h] con cron horario garantiza una unica vez.
+  no reenvia.
 - El commit es por cita, de modo que un fallo aislado no bloquea al resto.
 """
 
@@ -36,13 +36,6 @@ log = logging.getLogger("avisos")
 TEMPLATE_RECORDATORIO = "recordatorio_cita"  # vars: {{1}}=nombre {{2}}=servicio {{3}}=hora
 TEMPLATE_RESUMEN = "resumen_dia"  # var: {{1}}=resumen (fin de dia; sustituye a resumen_diario)
 
-VENTANA_MIN_H = 23
-VENTANA_MAX_H = 25
-
-
-def _utcnow() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
-
 
 def _body(*textos: str) -> list[dict[str, Any]]:
     """Componente 'body' de una plantilla con parametros de texto posicionales."""
@@ -50,17 +43,20 @@ def _body(*textos: str) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
-#  Recordatorios 24 h (al cliente)
+#  Recordatorios a los clientes con cita MAÑANA
 # --------------------------------------------------------------------------- #
 def enviar_recordatorios(session: Session) -> int:
-    """Envia recordatorio a las citas confirmadas que empiezan en [ahora+23h, ahora+25h].
+    """Envia recordatorio a todas las citas confirmadas de MAÑANA (dia local).
 
+    Ejecutar una vez al dia a las 10:00 hora local, TODOS los dias (el domingo
+    avisa las citas del lunes). Decision del usuario 2026-07-04; la plantilla
+    dice "mañana", coherente con enviarse siempre el dia antes.
     Devuelve el numero de recordatorios enviados.
     """
-    ahora = _utcnow()
-    desde = ahora + dt.timedelta(hours=VENTANA_MIN_H)
-    hasta = ahora + dt.timedelta(hours=VENTANA_MAX_H)
     tz = get_timezone(session)
+    manana = dt.datetime.now(tz).date() + dt.timedelta(days=1)
+    desde = dt.datetime.combine(manana, dt.time.min, tzinfo=tz).astimezone(dt.timezone.utc)
+    hasta = desde + dt.timedelta(days=1)
     lang = settings.whatsapp_template_lang
 
     citas = list(
@@ -69,7 +65,7 @@ def enviar_recordatorios(session: Session) -> int:
                 Cita.estado == ESTADO_CONFIRMADA,
                 Cita.recordatorio == RECORDATORIO_PENDIENTE,
                 Cita.inicio >= desde,
-                Cita.inicio <= hasta,
+                Cita.inicio < hasta,
             )
         ).all()
     )

@@ -1,9 +1,10 @@
-"""Entrypoint de cron: enviar recordatorios 24 h (ejecutar cada hora).
+"""Entrypoint de cron: recordatorios a los clientes con cita MAÑANA.
 
     python -m scripts.recordatorios
 
-Selecciona las citas confirmadas cuyo inicio cae en [ahora+23h, ahora+25h], envia la
-plantilla de recordatorio y las marca como enviadas (idempotente).
+Ejecutar una vez al dia a las 10:00 hora local, TODOS los dias (el domingo
+avisa las citas del lunes). Envia la plantilla `recordatorio_cita` a cada
+cita confirmada de mañana y la marca como avisada (idempotente).
 """
 
 from __future__ import annotations
