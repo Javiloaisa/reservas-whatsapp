@@ -76,8 +76,10 @@ el envío en consola):
 
 - **Recordatorio**: avisa a las citas confirmadas cuyo inicio cae en `[ahora+23h, ahora+25h]` y las
   marca como enviadas (idempotente: una sola vez por cita).
-- **Resumen diario**: envía al número de `config.podologo_whatsapp` las citas reservadas hoy. Si ese
-  número no está configurado, no envía (lo indica por log).
+- **Resumen diario**: envía **por Telegram** (chat `TELEGRAM_CHAT_ID` / `config.telegram_chat_id`) las
+  citas reservadas hoy. Va por Telegram y no por WhatsApp porque no se puede escribir al propio número de
+  coexistencia. Si no hay chat configurado, no envía (lo indica por log). Sin `TELEGRAM_TOKEN` opera en
+  modo stub (registra el resumen en consola).
 
 #### Plantillas de WhatsApp (obligatorias para mensajes iniciados por el negocio)
 

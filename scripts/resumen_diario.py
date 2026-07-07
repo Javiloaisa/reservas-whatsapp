@@ -2,8 +2,10 @@
 
     python -m scripts.resumen_diario
 
-Envia al numero de `config.podologo_whatsapp` la plantilla con las citas
-RESERVADAS hoy (la actividad del dia del agente), ordenadas por fecha de cita.
+Envia por Telegram (al chat `TELEGRAM_CHAT_ID` / config `telegram_chat_id`) las
+citas RESERVADAS hoy (la actividad del dia del agente), ordenadas por fecha de
+cita. Va por Telegram porque WhatsApp no permite escribirse al propio numero de
+coexistencia (decision del usuario 2026-07-07).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ def main() -> None:
     session = SessionLocal()
     try:
         ok = avisos.enviar_resumen_diario(session)
-        print("resumen_diario: enviado" if ok else "resumen_diario: omitido (sin podologo_whatsapp)")
+        print("resumen_diario: enviado" if ok else "resumen_diario: omitido (sin telegram_chat_id)")
     finally:
         session.close()
 

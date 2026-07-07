@@ -56,8 +56,9 @@ CONFIG_DEFAULTS = {
         "Hola! Soy el asistente de la clinica de podologia. Puedo informarte de los "
         "servicios y reservar tu cita. En que puedo ayudarte?"
     ),
-    # Numero del podologo (internacional sin '+') para el resumen diario (fase 5). Placeholder.
-    "podologo_whatsapp": "",
+    # Chat de Telegram del podologo para el resumen diario (§11 v2). Vacio => usa
+    # TELEGRAM_CHAT_ID del .env. Editable desde el panel (Ajustes).
+    "telegram_chat_id": "",
     # Modo humano tras un eco del podologo (§5 v2): horas que el bot calla para ese cliente.
     "intervalo_modo_humano_horas": "4",
     # Palabra clave que el podologo escribe para reactivar el bot antes de tiempo (§5 v2).

@@ -10,7 +10,7 @@ import pytest
 
 from app.db import SessionLocal
 from app.models import ESTADO_CONFIRMADA, Cita, Cliente
-from app.services import avisos, whatsapp
+from app.services import avisos, telegram, whatsapp
 from app.services.config_repo import get_config, get_timezone, set_config
 
 
@@ -24,11 +24,11 @@ def session():
 
 
 @pytest.fixture()
-def restaurar_podologo_whatsapp(session):
-    original = get_config(session, "podologo_whatsapp")
+def restaurar_telegram_chat_id(session):
+    original = get_config(session, "telegram_chat_id")
     yield
     if original is not None:
-        set_config(session, "podologo_whatsapp", original)
+        set_config(session, "telegram_chat_id", original)
         session.commit()
 
 
@@ -40,11 +40,12 @@ def _cliente(session, nombre: str) -> Cliente:
 
 
 def test_resumen_diario_incluye_solo_citas_reservadas_hoy(
-    session, restaurar_podologo_whatsapp, monkeypatch: pytest.MonkeyPatch
+    session, restaurar_telegram_chat_id, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """El resumen de fin de dia lista las citas RESERVADAS hoy (aunque la cita sea
-    para otro dia), no la agenda de hoy (decision del usuario 2026-07-04)."""
-    set_config(session, "podologo_whatsapp", "34699999999")
+    para otro dia), no la agenda de hoy (decision del usuario 2026-07-04). Va por
+    Telegram (decision del usuario 2026-07-07)."""
+    set_config(session, "telegram_chat_id", "1688105242")
     session.commit()
 
     tz = get_timezone(session)
@@ -74,16 +75,18 @@ def test_resumen_diario_incluye_solo_citas_reservadas_hoy(
 
     capturado: dict = {}
 
-    def _fake_send_template(to, name, lang=None, components=None):  # noqa: ANN001
-        capturado["to"] = to
-        capturado["components"] = components
+    def _fake_enviar(chat_id, texto):  # noqa: ANN001
+        capturado["chat_id"] = chat_id
+        capturado["texto"] = texto
+        return True
 
-    monkeypatch.setattr(whatsapp, "send_template", _fake_send_template)
+    monkeypatch.setattr(telegram, "enviar", _fake_enviar)
 
     enviado = avisos.enviar_resumen_diario(session)
 
     assert enviado is True
-    texto = capturado["components"][0]["parameters"][0]["text"]
+    assert capturado["chat_id"] == "1688105242"
+    texto = capturado["texto"]
     assert "Reservada hoy, cita manana" in texto
     assert "Reservada ayer, cita hoy" not in texto
 

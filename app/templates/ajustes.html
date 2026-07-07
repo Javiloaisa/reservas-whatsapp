@@ -8,8 +8,9 @@
     <label>Zona horaria</label>
     <input name="timezone" value="{{ cfg.timezone|default('') }}" style="width:100%;">
 
-    <label>WhatsApp del podólogo (para el resumen diario)</label>
-    <input name="podologo_whatsapp" value="{{ cfg.podologo_whatsapp|default('') }}" style="width:100%;" placeholder="34600111222">
+    <label>Chat de Telegram del podólogo (para el resumen diario)</label>
+    <input name="telegram_chat_id" value="{{ cfg.telegram_chat_id|default('') }}" style="width:100%;" placeholder="1688105242">
+    <small style="color:#888;">El token del bot va en el <code>.env</code> (TELEGRAM_TOKEN). Aquí solo el chat_id.</small>
 
     <label>Modelo de Claude</label>
     <input name="modelo_claude" value="{{ cfg.modelo_claude|default('') }}" style="width:100%;">

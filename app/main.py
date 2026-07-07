@@ -72,6 +72,7 @@ async def health() -> dict[str, object]:
         "debug": settings.debug,
         "anthropic": settings.anthropic_enabled,
         "whatsapp": settings.whatsapp_enabled,
+        "telegram": settings.telegram_enabled,
         "webhook_firma": settings.webhook_signature_required,
         "google_calendar": settings.gcal_enabled,
         "timezone": settings.timezone,

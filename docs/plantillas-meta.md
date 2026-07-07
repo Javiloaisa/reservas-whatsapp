@@ -35,42 +35,33 @@ Si necesitas cambiar o cancelar la cita, responde a este mensaje.
 
 ---
 
-## 2. `resumen_dia`
+## 2. Resumen diario → **por Telegram, no por WhatsApp**
 
-Resumen de FIN de dia (20:30): citas RESERVADAS hoy, no la agenda de mañana.
-(Sustituye a la plantilla `resumen_diario`, que quedó obsoleta en revisión al
-cambiar la semántica — las plantillas pendientes no se pueden editar y borrar
-una bloquea su nombre 30 días.)
+El resumen de fin de día al podólogo **ya no usa una plantilla de Meta**. Va por
+**Telegram** (decisión del usuario 2026-07-07): WhatsApp no permite escribirse al
+mismo número desde el que se opera (coexistencia), así que el podólogo no puede
+recibirse a sí mismo el resumen por WhatsApp.
 
-- **Nombre**: `resumen_dia`
-- **Categoría**: Utility (utilidad)
-- **Idioma**: Spanish (es)
-- **Variables**: `{{1}}` = resumen de las reservas del día en una línea
+> Quedó obsoleta la antigua plantilla `resumen_dia`. No hace falta crearla ni
+> aprobarla en Meta. Si ya estaba dada de alta, se puede ignorar/borrar.
 
-**Cuerpo:**
+Configuración (nada que aprobar en Meta):
 
-```
-Hola, estas son las citas reservadas hoy en la clínica: {{1}}
+1. Crear un bot de Telegram con **@BotFather** → copiar el token a `TELEGRAM_TOKEN`
+   en el `.env`.
+2. El podólogo abre un chat con ese bot y le escribe una vez; obtener el `chat_id`
+   (p. ej. `https://api.telegram.org/bot<TOKEN>/getUpdates`) y ponerlo en
+   `TELEGRAM_CHAT_ID` (o en el panel → **Ajustes → Chat de Telegram del podólogo**).
 
-¡Hasta mañana!
-```
-
-> Meta no permite variables al principio o final del mensaje: el cierre
-> "¡Hasta mañana!" es necesario para que pase la validación.
-
-**Valor de ejemplo para la revisión:**
-- {{1}}: `2 citas: 07/07 10:30 Quiropodia (María López); 09/07 16:00 Ortonixia (Juan Ruiz)`
-
-> Las variables de plantilla no admiten saltos de línea: el resumen va en una
-> sola línea, separado por punto y coma (así lo genera `avisos._resumen_texto`).
+El texto lo genera `avisos._resumen_texto` (multilínea, sin restricciones de plantilla).
 
 ---
 
 ## Notas
 
-- **Categoría Utility**: son notificaciones transaccionales (no marketing), la
-  tarifa Meta más baja. No añadir texto promocional o Meta puede reclasificarla.
-- Tras la aprobación, activar el crontab (`deploy/crontab.example`) y rellenar
-  `config.podologo_whatsapp` (panel → Ajustes) para el resumen diario.
-- Si Meta rechaza una plantilla (poco probable con estos textos), el motivo
-  aparece en el panel; normalmente basta reformular y reenviar.
+- **Categoría Utility** (recordatorio): notificación transaccional (no marketing),
+  la tarifa Meta más baja. No añadir texto promocional o Meta puede reclasificarla.
+- Tras aprobar `recordatorio_cita`, activar el crontab (`deploy/crontab.example`).
+  Para el resumen basta con `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID` (sin paso por Meta).
+- Si Meta rechaza la plantilla de recordatorio (poco probable con este texto), el
+  motivo aparece en el panel; normalmente basta reformular y reenviar.

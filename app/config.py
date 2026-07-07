@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     google_credentials_file: str = ""
     google_calendar_id: str = ""
 
+    # --- Telegram (resumen diario al podologo; §11 v2) ---
+    # El resumen NO puede ir por WhatsApp (no se puede escribir al propio numero de
+    # coexistencia). Va por Telegram, como en crypto-agent. TOKEN del @BotFather;
+    # CHAT_ID del chat del podologo con el bot (tambien editable desde el panel).
+    telegram_token: str = ""
+    telegram_chat_id: str = ""
+
     # --- Admin del panel (fases posteriores) ---
     admin_email: str = "admin@example.com"
     admin_password: str = "cambia-esta-contrasena"
@@ -75,6 +82,11 @@ class Settings(BaseSettings):
     @property
     def anthropic_enabled(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def telegram_enabled(self) -> bool:
+        """True si hay token de bot de Telegram (si no, el resumen va a modo stub)."""
+        return bool(self.telegram_token)
 
     @property
     def webhook_signature_required(self) -> bool:

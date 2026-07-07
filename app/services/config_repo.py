@@ -1,6 +1,6 @@
 """Acceso a la tabla `config` (clave/valor) y a la zona horaria activa.
 
-Claves esperadas (ver §4): `timezone`, `podologo_whatsapp`, `bot_activo`,
+Claves esperadas (ver §4): `timezone`, `telegram_chat_id`, `bot_activo`,
 `mensaje_bienvenida`, `modelo_claude`.
 """
 
@@ -59,3 +59,12 @@ def get_timezone(session: Session) -> ZoneInfo:
 
 def modelo_claude(session: Session) -> str:
     return get_config(session, "modelo_claude", settings.claude_model) or settings.claude_model
+
+
+def telegram_chat_id(session: Session) -> str:
+    """Chat de Telegram del podologo para el resumen diario (§11 v2).
+
+    Prioriza el valor de `config` (editable desde el panel → Ajustes) sobre el de
+    `.env`, para poder cambiarlo sin redeploy.
+    """
+    return get_config(session, "telegram_chat_id", settings.telegram_chat_id) or settings.telegram_chat_id
