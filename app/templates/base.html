@@ -50,6 +50,7 @@
   <span class="brand">🦶 Podología</span>
   <nav>
     {% set p = activo|default('') %}
+    <a href="/admin/servicios" class="{{ 'active' if p=='servicios' }}">Servicios</a>
     <a href="/admin/horarios" class="{{ 'active' if p=='horarios' }}">Horarios</a>
     <a href="/admin/conversaciones" class="{{ 'active' if p=='conversaciones' }}">Conversaciones</a>
     <a href="/admin/stats" class="{{ 'active' if p=='stats' }}">Estadísticas</a>

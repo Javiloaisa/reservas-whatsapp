@@ -26,6 +26,7 @@ from app.models import (
     Cliente,
     Horario,
     Mensaje,
+    Servicio,
     UsuarioAdmin,
 )
 from app.security import verify_password
@@ -189,6 +190,80 @@ def borrar_bloqueo(
         db.delete(bloqueo)
         db.commit()
     return _redirect("/admin/horarios", msg="Bloqueo borrado.")
+
+
+# --------------------------------------------------------------------------- #
+#  Servicios
+# --------------------------------------------------------------------------- #
+@router.get("/servicios", response_class=HTMLResponse)
+def servicios_page(
+    request: Request,
+    msg: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+    _: UsuarioAdmin = Depends(require_admin_html),
+) -> HTMLResponse:
+    servicios = list(db.scalars(select(Servicio).order_by(Servicio.id)).all())
+    return templates.TemplateResponse(
+        request,
+        "servicios.html",
+        {"servicios": servicios, "msg": msg, "error": error},
+    )
+
+
+@router.post("/servicios")
+def crear_servicio(
+    nombre: str = Form(...),
+    duracion_min: int = Form(...),
+    buffer_min: int = Form(0),
+    precio: str = Form(""),
+    db: Session = Depends(get_db),
+    _: UsuarioAdmin = Depends(require_admin_html),
+) -> RedirectResponse:
+    servicio = Servicio(
+        nombre=nombre.strip(),
+        duracion_min=duracion_min,
+        buffer_min=buffer_min,
+        precio=float(precio) if precio.strip() else None,
+    )
+    db.add(servicio)
+    db.commit()
+    return _redirect("/admin/servicios", msg="Servicio creado.")
+
+
+@router.post("/servicios/{servicio_id}")
+def editar_servicio(
+    servicio_id: int,
+    nombre: str = Form(...),
+    duracion_min: int = Form(...),
+    buffer_min: int = Form(0),
+    precio: str = Form(""),
+    db: Session = Depends(get_db),
+    _: UsuarioAdmin = Depends(require_admin_html),
+) -> RedirectResponse:
+    servicio = db.get(Servicio, servicio_id)
+    if servicio is None:
+        return _redirect("/admin/servicios", error="Servicio no encontrado.")
+    servicio.nombre = nombre.strip()
+    servicio.duracion_min = duracion_min
+    servicio.buffer_min = buffer_min
+    servicio.precio = float(precio) if precio.strip() else None
+    db.commit()
+    return _redirect("/admin/servicios", msg="Servicio actualizado.")
+
+
+@router.post("/servicios/{servicio_id}/baja")
+def baja_servicio(
+    servicio_id: int,
+    db: Session = Depends(get_db),
+    _: UsuarioAdmin = Depends(require_admin_html),
+) -> RedirectResponse:
+    servicio = db.get(Servicio, servicio_id)
+    if servicio is None:
+        return _redirect("/admin/servicios", error="Servicio no encontrado.")
+    servicio.activo = False
+    db.commit()
+    return _redirect("/admin/servicios", msg="Servicio dado de baja.")
 
 
 # --------------------------------------------------------------------------- #
