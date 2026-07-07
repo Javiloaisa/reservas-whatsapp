@@ -215,17 +215,10 @@ def servicios_page(
 def crear_servicio(
     nombre: str = Form(...),
     duracion_min: int = Form(...),
-    buffer_min: int = Form(0),
-    precio: str = Form(""),
     db: Session = Depends(get_db),
     _: UsuarioAdmin = Depends(require_admin_html),
 ) -> RedirectResponse:
-    servicio = Servicio(
-        nombre=nombre.strip(),
-        duracion_min=duracion_min,
-        buffer_min=buffer_min,
-        precio=float(precio) if precio.strip() else None,
-    )
+    servicio = Servicio(nombre=nombre.strip(), duracion_min=duracion_min, buffer_min=0)
     db.add(servicio)
     db.commit()
     return _redirect("/admin/servicios", msg="Servicio creado.")
@@ -236,8 +229,6 @@ def editar_servicio(
     servicio_id: int,
     nombre: str = Form(...),
     duracion_min: int = Form(...),
-    buffer_min: int = Form(0),
-    precio: str = Form(""),
     db: Session = Depends(get_db),
     _: UsuarioAdmin = Depends(require_admin_html),
 ) -> RedirectResponse:
@@ -246,8 +237,6 @@ def editar_servicio(
         return _redirect("/admin/servicios", error="Servicio no encontrado.")
     servicio.nombre = nombre.strip()
     servicio.duracion_min = duracion_min
-    servicio.buffer_min = buffer_min
-    servicio.precio = float(precio) if precio.strip() else None
     db.commit()
     return _redirect("/admin/servicios", msg="Servicio actualizado.")
 
@@ -264,6 +253,20 @@ def baja_servicio(
     servicio.activo = False
     db.commit()
     return _redirect("/admin/servicios", msg="Servicio dado de baja.")
+
+
+@router.post("/servicios/{servicio_id}/alta")
+def alta_servicio(
+    servicio_id: int,
+    db: Session = Depends(get_db),
+    _: UsuarioAdmin = Depends(require_admin_html),
+) -> RedirectResponse:
+    servicio = db.get(Servicio, servicio_id)
+    if servicio is None:
+        return _redirect("/admin/servicios", error="Servicio no encontrado.")
+    servicio.activo = True
+    db.commit()
+    return _redirect("/admin/servicios", msg="Servicio activado.")
 
 
 # --------------------------------------------------------------------------- #

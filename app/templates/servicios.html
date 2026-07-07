@@ -9,22 +9,18 @@
   <form method="post" action="/admin/servicios" class="row">
     <div><label>Nombre</label><input name="nombre" required></div>
     <div><label>Duración (min)</label><input type="number" name="duracion_min" value="30" min="5" required></div>
-    <div><label>Buffer (min)</label><input type="number" name="buffer_min" value="0" min="0"></div>
-    <div><label>Precio (€)</label><input type="number" name="precio" step="0.01" min="0"></div>
     <div><button type="submit">Crear</button></div>
   </form>
 </div>
 
 <table>
-  <thead><tr><th>Nombre</th><th>Duración</th><th>Buffer</th><th>Precio</th><th>Activo</th><th></th></tr></thead>
+  <thead><tr><th>Nombre</th><th>Duración</th><th>Activo</th><th></th></tr></thead>
   <tbody>
   {% for s in servicios %}
     <tr>
       <form method="post" action="/admin/servicios/{{ s.id }}">
       <td><input name="nombre" value="{{ s.nombre }}"></td>
       <td><input type="number" name="duracion_min" value="{{ s.duracion_min }}" style="min-width:80px;"></td>
-      <td><input type="number" name="buffer_min" value="{{ s.buffer_min }}" style="min-width:80px;"></td>
-      <td><input type="number" name="precio" step="0.01" value="{{ s.precio if s.precio is not none else '' }}" style="min-width:90px;"></td>
       <td>{{ '✅' if s.activo else '—' }}</td>
       <td>
         <button class="small">Guardar</button>
@@ -32,6 +28,10 @@
       {% if s.activo %}
         <form class="inline" method="post" action="/admin/servicios/{{ s.id }}/baja" onsubmit="return confirm('¿Dar de baja este servicio?')">
           <button class="small danger">Baja</button>
+        </form>
+      {% else %}
+        <form class="inline" method="post" action="/admin/servicios/{{ s.id }}/alta">
+          <button class="small sec">Activar</button>
         </form>
       {% endif %}
       </td>
