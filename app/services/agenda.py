@@ -130,6 +130,16 @@ def _reservado(cita: Cita) -> tuple[dt.datetime, dt.datetime]:
     return cita.inicio, cita.fin + buffer
 
 
+def _evento_calendar(servicio: Servicio, nombre: str | None, telefono: str) -> tuple[str, str]:
+    """Titulo y descripcion del evento de Google Calendar de una cita.
+
+    El telefono va en la descripcion del evento (no en el titulo). Se centraliza
+    aqui para que crear y reprogramar dejen el mismo texto (evita que una
+    reprogramacion borre el telefono de la descripcion).
+    """
+    return f"{servicio.nombre} - {nombre or telefono}", f"Tel: {telefono}"
+
+
 def huecos_libres(
     session: Session,
     fecha: dt.date,
@@ -320,9 +330,9 @@ def crear_cita(
 
     # Sincronizacion con Calendar: best-effort, no debe tumbar la reserva.
     try:
-        resumen = f"{servicio.nombre} - {cliente.nombre or telefono}"
+        resumen, descripcion = _evento_calendar(servicio, cliente.nombre, telefono)
         cita.gcal_event_id = calendar_gcal.create_event(
-            summary=resumen, start=inicio_utc, end=fin_utc, description=f"Tel: {telefono}"
+            summary=resumen, start=inicio_utc, end=fin_utc, description=descripcion
         )
     except Exception as exc:  # noqa: BLE001 - loguear y marcar para reintento
         log.error("No se pudo sincronizar la cita %s con Calendar: %s", cita.id, exc)
@@ -536,9 +546,11 @@ def actualizar_cita(
         cita.fin = nuevo_fin
         cita.recordatorio = RECORDATORIO_PENDIENTE  # rearmar recordatorio tras cambio de hora
         try:
-            resumen = f"{servicio.nombre} - {cita.cliente.nombre or cita.cliente.telefono}"
+            resumen, descripcion = _evento_calendar(
+                servicio, cita.cliente.nombre, cita.cliente.telefono
+            )
             cita.gcal_event_id = calendar_gcal.update_event(
-                cita.gcal_event_id, resumen, nuevo_inicio, nuevo_fin
+                cita.gcal_event_id, resumen, nuevo_inicio, nuevo_fin, description=descripcion
             )
         except Exception as exc:  # noqa: BLE001
             log.error("No se pudo actualizar el evento de la cita %s: %s", cita.id, exc)
