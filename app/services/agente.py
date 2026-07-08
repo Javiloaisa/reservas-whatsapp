@@ -79,11 +79,30 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "consultar_cita",
+        "description": (
+            "SOLO LECTURA. Devuelve las citas futuras ya reservadas del cliente (opcionalmente "
+            "de una fecha). Usar SIEMPRE para confirmar o consultar una cita ya existente "
+            "('¿a que hora tengo la cita?', 'confirmo la de hoy'). NUNCA usar cancelar_cita para esto."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fecha": {
+                    "type": "string",
+                    "description": "Opcional. Filtra a un dia concreto en formato YYYY-MM-DD",
+                },
+            },
+        },
+    },
+    {
         "name": "cancelar_cita",
         "description": (
-            "Cancela una cita futura del propio cliente. Indicar el id de la cita, o bien la fecha "
-            "(YYYY-MM-DD) y la hora (HH:MM) de la cita a cancelar. Tambien localiza citas que el "
-            "cliente reservo directamente con el podologo (para esas la hora exacta es obligatoria)."
+            "ACCION DESTRUCTIVA: cancela una cita. Usar UNICAMENTE cuando el cliente pida de forma "
+            "EXPLICITA cancelar o cambiar su cita. Confirmar o consultar una cita NO es cancelarla: "
+            "para eso usa consultar_cita. Indicar el id de la cita, o bien la fecha (YYYY-MM-DD) y la "
+            "hora (HH:MM). Tambien localiza citas que el cliente reservo directamente con el podologo "
+            "(para esas la hora exacta es obligatoria)."
         ),
         "input_schema": {
             "type": "object",
@@ -219,6 +238,20 @@ def _ejecutar_tool(
                 ),
                 False,
             )
+
+        if nombre_tool == "consultar_cita":
+            fecha = dt.date.fromisoformat(args["fecha"]) if args.get("fecha") else None
+            citas = agenda.citas_futuras_cliente(session, telefono, fecha=fecha)
+            data = [
+                {
+                    "cita_id": c.id,
+                    "fecha": c.inicio.astimezone(tz).strftime("%Y-%m-%d"),
+                    "hora": c.inicio.astimezone(tz).strftime("%H:%M"),
+                    "servicio": c.servicio.nombre,
+                }
+                for c in citas
+            ]
+            return json.dumps({"citas": data, "total": len(data)}, ensure_ascii=False), False
 
         if nombre_tool == "cancelar_cita":
             fecha = dt.date.fromisoformat(args["fecha"]) if args.get("fecha") else None

@@ -486,6 +486,34 @@ def cancelar_cita_manual(session: Session, telefono: str, inicio_iso: str) -> di
     return {"inicio": inicio_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M")}
 
 
+def citas_futuras_cliente(
+    session: Session,
+    telefono: str,
+    fecha: dt.date | None = None,
+) -> list[Cita]:
+    """Citas confirmadas y futuras del propio cliente (solo lectura).
+
+    Usada por el agente para CONFIRMAR o consultar una cita ya reservada sin
+    tocar nada. No cancela ni modifica: es la via segura para "¿a que hora tengo
+    la cita?" o "confirmo la de hoy". Si `fecha` se indica, filtra a ese dia.
+    """
+    tz = get_timezone(session)
+    stmt = (
+        select(Cita)
+        .join(Cliente)
+        .where(
+            Cliente.telefono == telefono,
+            Cita.estado == ESTADO_CONFIRMADA,
+            Cita.inicio > _utcnow(),
+        )
+    )
+    if fecha is not None:
+        dia_ini = dt.datetime.combine(fecha, dt.time.min, tzinfo=tz).astimezone(dt.timezone.utc)
+        dia_fin = dia_ini + dt.timedelta(days=1)
+        stmt = stmt.where(Cita.inicio >= dia_ini, Cita.inicio < dia_fin)
+    return list(session.scalars(stmt.order_by(Cita.inicio)).all())
+
+
 def listar_citas(
     session: Session,
     desde: dt.datetime | None = None,
