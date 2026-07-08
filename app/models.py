@@ -142,6 +142,11 @@ class Mensaje(Base):
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
     # Etiqueta del clasificador de intencion (cita|no_cita|duda); solo en mensajes del cliente.
     clasificacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Rondas de tool use (JSON) que el agente ejecuto para producir ESTA respuesta.
+    # Solo en mensajes del bot que usaron herramientas; permite que el modelo
+    # recuerde en turnos siguientes que ya verifico disponibilidad (evita ofrecer
+    # huecos sin confirmar y las disculpas por opciones "no verificadas").
+    traza_tools: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Id del mensaje en el proveedor (YCloud/Meta); unico => deduplicacion de webhooks.
     message_id_proveedor: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
     creado_en: Mapped[dt.datetime] = mapped_column(

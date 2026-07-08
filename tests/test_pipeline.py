@@ -8,6 +8,7 @@ clasificador cuando necesitan un caso "no_cita"/"duda" concreto.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import uuid
 
 import pytest
@@ -256,3 +257,77 @@ def test_historial_mapea_podologo_manual_a_assistant(session) -> None:
     assert all(m["role"] in ("user", "assistant") for m in historial)
     assert historial[0]["role"] == "user"  # la API exige empezar con user
     assert [m["role"] for m in historial] == ["user", "assistant", "assistant"]
+
+
+# --------------------------------------------------------------------------- #
+#  Persistencia de las rondas de tool use (fix disponibilidad no verificada)
+# --------------------------------------------------------------------------- #
+class _FakeBlock:
+    def __init__(self, **kw) -> None:
+        self.__dict__.update(kw)
+
+
+class _FakeResp:
+    def __init__(self, stop_reason, content) -> None:
+        self.stop_reason = stop_reason
+        self.content = content
+
+
+class _FakeMessages:
+    def __init__(self, respuestas) -> None:
+        self._respuestas = list(respuestas)
+
+    def create(self, **_kw):
+        return self._respuestas.pop(0)
+
+
+class _FakeClient:
+    def __init__(self, respuestas) -> None:
+        self.messages = _FakeMessages(respuestas)
+
+
+def test_traza_tools_se_persiste_y_se_reconstruye(session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """El agente consulta una herramienta y, en el siguiente mensaje, el historial
+    debe reconstruir la ronda tool_use/tool_result para que el modelo recuerde lo
+    que ya verifico (no volver a ofrecer huecos sin confirmar)."""
+    from app.services import agente
+
+    # Turno 1: el modelo pide una herramienta; turno 2: responde texto final.
+    respuestas = [
+        _FakeResp("tool_use", [_FakeBlock(type="tool_use", id="tu_1", name="listar_servicios", input={})]),
+        _FakeResp("end_turn", [_FakeBlock(type="text", text="Tenemos estos servicios.")]),
+    ]
+    monkeypatch.setattr(agente, "_client", lambda: _FakeClient(respuestas))
+
+    cliente = Cliente(telefono=_telefono())
+    session.add(cliente)
+    session.flush()
+
+    texto, traza = agente._run_agent(session, cliente.telefono, "system", [{"role": "user", "content": "hola"}])
+
+    assert texto == "Tenemos estos servicios."
+    # La traza contiene la ronda assistant(tool_use) + user(tool_result).
+    assert [m["role"] for m in traza] == ["assistant", "user"]
+    assert traza[0]["content"][0]["type"] == "tool_use"
+    assert traza[1]["content"][0]["type"] == "tool_result"
+
+    # Al persistirla y releer el historial, la ronda se reinserta antes del texto.
+    session.add(Mensaje(cliente_id=cliente.id, rol="user", contenido="hola"))
+    session.add(
+        Mensaje(
+            cliente_id=cliente.id,
+            rol=ROL_BOT,
+            contenido=texto,
+            traza_tools=json.dumps(traza, ensure_ascii=False),
+        )
+    )
+    session.commit()
+
+    historial = agente._historial(session, cliente.id)
+    tipos = [(m["role"], m["content"] if isinstance(m["content"], str) else m["content"][0]["type"]) for m in historial]
+    assert tipos == [
+        ("user", "hola"),
+        ("assistant", "tool_use"),
+        ("user", "tool_result"),
+        ("assistant", "Tenemos estos servicios."),
+    ]

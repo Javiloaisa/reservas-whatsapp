@@ -199,6 +199,56 @@ def huecos_libres(
     return huecos
 
 
+# Tope de dias que un solo barrido por rango puede recorrer (una peticion abierta
+# como "a partir de las 18h, aunque sea muy adelante" no debe escanear meses ni
+# disparar una llamada a Calendar por cada dia indefinidamente).
+VENTANA_MAX_DIAS = 60
+
+
+def buscar_huecos(
+    session: Session,
+    servicio_id: int,
+    desde: dt.date,
+    hasta: dt.date,
+    hora_desde: dt.time | None = None,
+    hora_hasta: dt.time | None = None,
+    max_dias: int = 5,
+    tz: ZoneInfo | None = None,
+) -> tuple[list[tuple[dt.date, list[dt.datetime]]], bool]:
+    """Busca los primeros dias con hueco real en [desde, hasta], opcionalmente
+    restringiendo a una franja horaria [hora_desde, hora_hasta] (por hora de INICIO).
+
+    Devuelve (resultados, truncado):
+    - `resultados`: hasta `max_dias` pares (fecha, lista de inicios validos) que
+      tienen al menos un hueco en la franja. Los dias sin hueco no aparecen.
+    - `truncado`: True si el barrido se corto por el tope de ventana (`VENTANA_MAX_DIAS`)
+      antes de llegar a `hasta`, para que el agente sepa que puede seguir mirando mas alla.
+
+    Evita que el agente tenga que sondear dia a dia peticiones abiertas: una sola
+    llamada localiza los proximos huecos que encajan.
+    """
+    tz = tz or get_timezone(session)
+    _servicio_activo(session, servicio_id)  # valida pronto (mensaje claro al agente)
+    if hasta < desde:
+        return [], False
+
+    resultados: list[tuple[dt.date, list[dt.datetime]]] = []
+    dia = desde
+    tope = min(hasta, desde + dt.timedelta(days=VENTANA_MAX_DIAS - 1))
+    while dia <= tope and len(resultados) < max_dias:
+        huecos = huecos_libres(session, dia, servicio_id, tz=tz)
+        if hora_desde is not None:
+            huecos = [h for h in huecos if h.time() >= hora_desde]
+        if hora_hasta is not None:
+            huecos = [h for h in huecos if h.time() <= hora_hasta]
+        if huecos:
+            resultados.append((dia, huecos))
+        dia += dt.timedelta(days=1)
+
+    truncado = dia > tope and tope < hasta and len(resultados) < max_dias
+    return resultados, truncado
+
+
 def _slot_libre(
     session: Session,
     servicio: Servicio,

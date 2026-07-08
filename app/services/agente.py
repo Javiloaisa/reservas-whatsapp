@@ -60,6 +60,38 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "buscar_disponibilidad",
+        "description": (
+            "Busca los proximos dias con hueco real de un servicio en un RANGO de fechas, "
+            "opcionalmente dentro de una franja horaria (por hora de inicio). Usar cuando el "
+            "cliente da un margen amplio o abierto ('cuanto antes', 'a las 9 o por la tarde', "
+            "'la semana que viene', 'me da igual el dia'): evita tener que consultar dia a dia. "
+            "Devuelve solo los dias que tienen hueco. Para franjas disjuntas (p. ej. 'a las 9 O "
+            "a partir de las 18') llama dos veces, una por franja."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "servicio_id": {"type": "integer", "description": "Id del servicio"},
+                "fecha_desde": {"type": "string", "description": "Primer dia a mirar (YYYY-MM-DD)"},
+                "fecha_hasta": {"type": "string", "description": "Ultimo dia a mirar (YYYY-MM-DD)"},
+                "hora_desde": {
+                    "type": "string",
+                    "description": "Opcional. Solo huecos que empiecen a esta hora o despues (HH:MM, 24h).",
+                },
+                "hora_hasta": {
+                    "type": "string",
+                    "description": "Opcional. Solo huecos que empiecen a esta hora o antes (HH:MM, 24h).",
+                },
+                "max_dias": {
+                    "type": "integer",
+                    "description": "Opcional. Numero maximo de dias con hueco a devolver (por defecto 5).",
+                },
+            },
+            "required": ["servicio_id", "fecha_desde", "fecha_hasta"],
+        },
+    },
+    {
         "name": "crear_cita",
         "description": (
             "Reserva una cita. Llamar solo tras confirmar con el cliente servicio, dia y hora, "
@@ -211,6 +243,35 @@ def _ejecutar_tool(
             }
             return json.dumps(data, ensure_ascii=False), False
 
+        if nombre_tool == "buscar_disponibilidad":
+            hora_desde = dt.time.fromisoformat(args["hora_desde"]) if args.get("hora_desde") else None
+            hora_hasta = dt.time.fromisoformat(args["hora_hasta"]) if args.get("hora_hasta") else None
+            resultados, truncado = agenda.buscar_huecos(
+                session,
+                servicio_id=int(args["servicio_id"]),
+                desde=dt.date.fromisoformat(args["fecha_desde"]),
+                hasta=dt.date.fromisoformat(args["fecha_hasta"]),
+                hora_desde=hora_desde,
+                hora_hasta=hora_hasta,
+                max_dias=int(args.get("max_dias", 5)),
+                tz=tz,
+            )
+            data = {
+                "dias": [
+                    {
+                        "fecha": fecha.isoformat(),
+                        "dia_semana": DIAS_ES[fecha.weekday()],
+                        "huecos": [
+                            {"hora": h.strftime("%H:%M"), "inicio_iso": h.isoformat()}
+                            for h in huecos[:8]
+                        ],
+                    }
+                    for fecha, huecos in resultados
+                ],
+                "truncado": truncado,
+            }
+            return json.dumps(data, ensure_ascii=False), False
+
         if nombre_tool == "crear_cita":
             if dry_run:
                 info = agenda.simular_crear_cita(
@@ -295,15 +356,43 @@ def _ejecutar_tool(
 # --------------------------------------------------------------------------- #
 #  Bucle de conversacion con Claude
 # --------------------------------------------------------------------------- #
+def _serializar_content(content: list[Any]) -> list[dict[str, Any]]:
+    """Convierte los bloques de respuesta del modelo (pydantic) a dicts JSON-safe.
+
+    Solo conserva las claves que la API acepta de vuelta como entrada, para poder
+    persistir el turno y reenviarlo en conversaciones posteriores sin errores.
+    """
+    bloques: list[dict[str, Any]] = []
+    for b in content:
+        tipo = getattr(b, "type", None)
+        if tipo == "text":
+            bloques.append({"type": "text", "text": b.text})
+        elif tipo == "tool_use":
+            bloques.append(
+                {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
+            )
+        else:  # pragma: no cover - tipos futuros (imagen, etc.)
+            bloques.append(b.model_dump(mode="json"))
+    return bloques
+
+
 def _run_agent(
     session: Session,
     telefono: str,
     system: str,
     messages: list[dict[str, Any]],
     dry_run: bool = False,
-) -> str:
+) -> tuple[str, list[dict[str, Any]]]:
+    """Ejecuta el bucle de tool use y devuelve (texto_final, rondas_de_tools).
+
+    `rondas_de_tools` son los turnos assistant(tool_use)/user(tool_result) que se
+    generaron en ESTA llamada (ya serializados). Se persisten junto a la respuesta
+    para que en el siguiente mensaje el modelo recuerde lo que ya verifico (§ fix
+    disponibilidad: no volver a ofrecer huecos sin confirmar).
+    """
     client = _client()
     modelo = modelo_claude(session)
+    base_len = len(messages)
 
     # Prompt caching: cachea bloque system y herramientas (estables durante el bucle).
     system_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
@@ -320,10 +409,11 @@ def _run_agent(
         )
 
         if resp.stop_reason != "tool_use":
-            return _texto_de(resp.content)
+            return _texto_de(resp.content), messages[base_len:]
 
-        # Adjuntar el turno del asistente (con sus bloques tool_use) tal cual.
-        messages.append({"role": "assistant", "content": resp.content})
+        # Adjuntar el turno del asistente (con sus bloques tool_use), ya serializado
+        # para que sea persistible y reenviable en turnos posteriores.
+        messages.append({"role": "assistant", "content": _serializar_content(resp.content)})
 
         tool_results = []
         for block in resp.content:
@@ -342,7 +432,10 @@ def _run_agent(
         messages.append({"role": "user", "content": tool_results})
 
     log.warning("Se alcanzo el limite de iteraciones de tool use para %s", telefono)
-    return "Perdona, estoy teniendo problemas para completar la gestion. Puedes intentarlo de nuevo en un momento?"
+    return (
+        "Perdona, estoy teniendo problemas para completar la gestion. Puedes intentarlo de nuevo en un momento?",
+        messages[base_len:],
+    )
 
 
 def _texto_de(content: list[Any]) -> str:
@@ -371,7 +464,7 @@ def resolver_cliente(session: Session, telefono: str, nombre: str | None = None)
 _ROL_API = {ROL_CLIENTE: "user", ROL_BOT: "assistant", ROL_PODOLOGO: "assistant"}
 
 
-def _historial(session: Session, cliente_id: int) -> list[dict[str, str]]:
+def _historial(session: Session, cliente_id: int) -> list[dict[str, Any]]:
     stmt = (
         select(Mensaje)
         .where(Mensaje.cliente_id == cliente_id)
@@ -380,12 +473,23 @@ def _historial(session: Session, cliente_id: int) -> list[dict[str, str]]:
     )
     recientes = list(session.scalars(stmt).all())
     recientes.reverse()
-    mensajes = [
-        {"role": _ROL_API.get(m.rol, "user"), "content": m.contenido} for m in recientes
-    ]
-    # La API exige que el primer mensaje sea del usuario; se descartan turnos
-    # iniciales del asistente (p. ej. un saludo automatico previo al historial).
-    while mensajes and mensajes[0]["role"] != "user":
+    mensajes: list[dict[str, Any]] = []
+    for m in recientes:
+        # Reinsertar las rondas de tool use que produjeron esta respuesta ANTES del
+        # texto final, para que el modelo vea que ya consulto disponibilidad/citas.
+        if m.rol == ROL_BOT and m.traza_tools:
+            try:
+                mensajes.extend(json.loads(m.traza_tools))
+            except (ValueError, TypeError):
+                log.warning("traza_tools corrupta en mensaje %s; se ignora", m.id)
+        mensajes.append({"role": _ROL_API.get(m.rol, "user"), "content": m.contenido})
+    # La API exige empezar por un turno del cliente. Se descartan los turnos
+    # iniciales del asistente (saludo automatico previo) y cualquier ronda de
+    # tool_result huerfana (su tool_use quedo fuera de la ventana): un turno
+    # valido del cliente es 'user' con contenido de texto (no lista de bloques).
+    while mensajes and not (
+        mensajes[0]["role"] == "user" and isinstance(mensajes[0]["content"], str)
+    ):
         mensajes.pop(0)
     return mensajes
 
@@ -420,13 +524,21 @@ def procesar_mensaje(
     messages = _historial(session, cliente.id)
 
     # Sin API key: degradar a eco/bienvenida (util en fase 2 antes de tener clave).
+    traza: list[dict[str, Any]] = []
     if not settings.anthropic_enabled:
         respuesta = f"(eco) {texto}"
     else:
         # Cliente nuevo = este es su primer mensaje registrado (transparencia RGPD).
         system = _system_prompt(session, cliente, es_nuevo=len(messages) <= 1)
-        respuesta = _run_agent(session, telefono, system, messages, dry_run=dry_run)
+        respuesta, traza = _run_agent(session, telefono, system, messages, dry_run=dry_run)
 
-    session.add(Mensaje(cliente_id=cliente.id, rol=ROL_BOT, contenido=respuesta))
+    session.add(
+        Mensaje(
+            cliente_id=cliente.id,
+            rol=ROL_BOT,
+            contenido=respuesta,
+            traza_tools=json.dumps(traza, ensure_ascii=False) if traza else None,
+        )
+    )
     session.commit()
     return respuesta
