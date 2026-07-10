@@ -29,6 +29,7 @@ from app.models import (
     Mensaje,
 )
 from app.services.config_repo import modelo_claude
+from app.services.whatsapp import es_no_texto
 
 log = logging.getLogger("clasificador")
 
@@ -86,6 +87,12 @@ def clasificar(
     `excluir_mensaje_id` evita duplicar en el CONTEXTO el mensaje nuevo si ya
     esta persistido en `mensajes`.
     """
+    # Audios, imagenes, ubicaciones... llegan como marcador ('[audio]', '[imagen]'...)
+    # y el clasificador SIEMPRE los trata como 'duda' (§6). Se resuelve aqui sin llamar
+    # a la API: ahorra una llamada a Claude por cada mensaje no-texto.
+    if es_no_texto(texto):
+        return CLASIFICACION_DUDA
+
     if not settings.anthropic_enabled:
         return CLASIFICACION_CITA  # stub de desarrollo (ver docstring del modulo)
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,6 +59,18 @@ class Otro:
 
 
 Evento = MensajeEntrante | EcoSaliente | Otro
+
+
+# Un mensaje no-texto (audio, imagen, ubicacion...) llega como marcador entre
+# corchetes ("[audio]", "[imagen]"...), tanto por YCloud como por Meta. El clasificador
+# los trata SIEMPRE como 'duda' (§6), asi que se detectan aqui para no gastar una
+# llamada a Claude por cada nota de voz o imagen.
+_MARCADOR_NO_TEXTO_RE = re.compile(r"^\[[a-z_]+\]$")
+
+
+def es_no_texto(texto: str) -> bool:
+    """True si `texto` es un marcador de mensaje no-texto ([audio], [imagen], ...)."""
+    return bool(_MARCADOR_NO_TEXTO_RE.match(texto.strip().lower()))
 
 
 def parse_webhook(payload: dict[str, Any]) -> list[Evento]:
