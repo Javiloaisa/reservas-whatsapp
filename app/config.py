@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # --- Anthropic ---
     anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-6"
+    claude_model: str = "claude-haiku-4-5-20251001"
 
     # --- YCloud (BSP, coexistencia; proveedor preferente si hay API key) ---
     ycloud_api_key: str = ""
