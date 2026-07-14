@@ -1,6 +1,6 @@
 """Clasificador de intencion cita / no_cita / duda (§6 del CLAUDE.md v2).
 
-Llamada rapida a Claude (mismo modelo que el agente, max_tokens bajo, temperature 0)
+Llamada rapida a Claude (modelo barato propio —Haiku—, max_tokens bajo, temperature 0)
 con `prompts/system_clasificador.md`. Politica: solo "cita" pasa al agente; ante
 cualquier problema (JSON invalido, error de API) se devuelve "duda" => silencio.
 
@@ -28,7 +28,7 @@ from app.models import (
     ROL_PODOLOGO,
     Mensaje,
 )
-from app.services.config_repo import modelo_claude
+from app.services.config_repo import modelo_clasificador
 from app.services.whatsapp import es_no_texto
 
 log = logging.getLogger("clasificador")
@@ -104,7 +104,7 @@ def clasificar(
 
     try:
         resp = _client().messages.create(
-            model=modelo_claude(session),
+            model=modelo_clasificador(session),
             max_tokens=MAX_TOKENS,
             temperature=0,
             system=_system(),

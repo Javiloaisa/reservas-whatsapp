@@ -32,7 +32,12 @@ class Settings(BaseSettings):
 
     # --- Anthropic ---
     anthropic_api_key: str = ""
+    # Modelo del CLASIFICADOR de intencion (tarea simple: JSON de una palabra).
+    # Haiku basta y es ~3x mas barato; corre en cada mensaje entrante.
     claude_model: str = "claude-haiku-4-5-20251001"
+    # Modelo del AGENTE conversacional (prompt largo con reglas criticas + tool
+    # use). Necesita Sonnet: con Haiku se salta reglas y da respuestas raras.
+    claude_model_agente: str = "claude-sonnet-4-6"
 
     # --- YCloud (BSP, coexistencia; proveedor preferente si hay API key) ---
     ycloud_api_key: str = ""

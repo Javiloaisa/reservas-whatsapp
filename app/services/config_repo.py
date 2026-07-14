@@ -1,7 +1,7 @@
 """Acceso a la tabla `config` (clave/valor) y a la zona horaria activa.
 
 Claves esperadas (ver §4): `timezone`, `telegram_chat_id`, `bot_activo`,
-`mensaje_bienvenida`, `modelo_claude`.
+`mensaje_bienvenida`, `modelo_agente`, `modelo_clasificador`.
 """
 
 from __future__ import annotations
@@ -57,8 +57,18 @@ def get_timezone(session: Session) -> ZoneInfo:
     return ZoneInfo(tz_name)
 
 
-def modelo_claude(session: Session) -> str:
-    return get_config(session, "modelo_claude", settings.claude_model) or settings.claude_model
+def modelo_agente(session: Session) -> str:
+    """Modelo del agente conversacional (prompt complejo + tool use => Sonnet).
+
+    Sustituye a la antigua clave unica `modelo_claude`, que se ignora a proposito:
+    el agente no debe degradarse a Haiku por un valor heredado en la BD.
+    """
+    return get_config(session, "modelo_agente", settings.claude_model_agente) or settings.claude_model_agente
+
+
+def modelo_clasificador(session: Session) -> str:
+    """Modelo del clasificador de intencion (tarea simple => Haiku, mas barato)."""
+    return get_config(session, "modelo_clasificador", settings.claude_model) or settings.claude_model
 
 
 def telegram_chat_id(session: Session) -> str:

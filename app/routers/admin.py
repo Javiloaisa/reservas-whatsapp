@@ -359,7 +359,14 @@ def stats_page(
 # --------------------------------------------------------------------------- #
 #  Ajustes
 # --------------------------------------------------------------------------- #
-_CLAVES_AJUSTES = ("timezone", "telegram_chat_id", "modelo_claude", "bot_activo", "mensaje_bienvenida")
+_CLAVES_AJUSTES = (
+    "timezone",
+    "telegram_chat_id",
+    "modelo_agente",
+    "modelo_clasificador",
+    "bot_activo",
+    "mensaje_bienvenida",
+)
 
 
 @router.get("/ajustes", response_class=HTMLResponse)
@@ -381,7 +388,8 @@ def ajustes_page(
 def guardar_ajustes(
     timezone: str = Form(""),
     telegram_chat_id: str = Form(""),
-    modelo_claude: str = Form(""),
+    modelo_agente: str = Form(""),
+    modelo_clasificador: str = Form(""),
     bot_activo: str = Form("true"),
     mensaje_bienvenida: str = Form(""),
     db: Session = Depends(get_db),
@@ -397,7 +405,8 @@ def guardar_ajustes(
     valores = {
         "timezone": timezone.strip(),
         "telegram_chat_id": telegram_chat_id.strip(),
-        "modelo_claude": modelo_claude.strip(),
+        "modelo_agente": modelo_agente.strip(),
+        "modelo_clasificador": modelo_clasificador.strip(),
         "bot_activo": "true" if bot_activo.strip().lower() == "true" else "false",
         "mensaje_bienvenida": mensaje_bienvenida.strip(),
     }

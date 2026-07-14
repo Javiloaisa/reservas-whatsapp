@@ -51,7 +51,10 @@ CONFIG_DEFAULTS = {
     # Modo sombra por defecto (§12 v2): el pipeline corre entero pero no se envia
     # nada hasta activarlo a mano tras revisar `log_sombra`.
     "bot_activo": "false",
-    "modelo_claude": settings.claude_model,
+    # Modelos separados: el agente necesita Sonnet (prompt complejo + tool use);
+    # al clasificador (JSON de una palabra) le basta Haiku, mas barato.
+    "modelo_agente": settings.claude_model_agente,
+    "modelo_clasificador": settings.claude_model,
     "mensaje_bienvenida": (
         "Hola! Soy el asistente de la clinica de podologia. Puedo informarte de los "
         "servicios y reservar tu cita. En que puedo ayudarte?"

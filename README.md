@@ -174,8 +174,11 @@ agente, así que no consumen tokens de Anthropic.
 - **DB**: SQLite en desarrollo, PostgreSQL en producción (código agnóstico vía `DATABASE_URL`).
   El anti-solape es un `EXCLUDE` con `btree_gist` que la migración aplica **solo** en PostgreSQL;
   en SQLite se valida en `app/services/agenda.py`.
-- **Modelo Claude**: `claude-sonnet-4-6` por defecto (rápido y económico), configurable en
-  `.env`/`config.modelo_claude`. Verificar el ID vigente en ejecución.
+- **Modelo Claude**: dos modelos separados — agente `claude-sonnet-4-6` (prompt complejo +
+  tool use) y clasificador `claude-haiku-4-5` (tarea simple, ~3x más barato). Configurables en
+  `.env` (`CLAUDE_MODEL_AGENTE` / `CLAUDE_MODEL`) o en el panel → Ajustes
+  (`config.modelo_agente` / `config.modelo_clasificador`). La clave antigua
+  `config.modelo_claude` ya no se lee.
 - **Zona horaria**: `Europe/Madrid` (`config.timezone`); todo se almacena en UTC-aware
   (ver `UTCDateTime` en `app/db.py`).
 - **Servicios/horario (placeholder)**: Quiropodia 30/0, Estudio biomecánico 45/0, Uña encarnada

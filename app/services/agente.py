@@ -24,12 +24,15 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import ROL_BOT, ROL_CLIENTE, ROL_PODOLOGO, Cliente, Mensaje
 from app.services import agenda
-from app.services.config_repo import get_timezone, modelo_claude
+from app.services.config_repo import get_timezone, modelo_agente
 
 log = logging.getLogger("agente")
 
 HISTORIAL_MAX = 20
-MAX_ITERACIONES_TOOLS = 6
+# Con la busqueda proactiva de huecos (buscar_disponibilidad + consultas por dia
+# + crear_cita) una reserva normal puede superar 6 rondas de tools; con 6 el
+# cliente recibia el mensaje generico de error sin motivo aparente.
+MAX_ITERACIONES_TOOLS = 10
 MAX_TOKENS = 1024
 
 DIAS_ES = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
@@ -186,7 +189,10 @@ def _system_prompt(session: Session, cliente: Cliente, es_nuevo: bool = False) -
         for s in servicios
     ]
     reemplazos = {
-        "[[FECHA_HORA]]": hoy.strftime("%Y-%m-%d %H:%M"),
+        # Redondeado a la hora: precision de minuto invalidaba la cache de prompts
+        # en casi cada mensaje (el prompt es el prefijo cacheado). Para interpretar
+        # "manana"/"el viernes" y la franja horaria basta la hora.
+        "[[FECHA_HORA]]": hoy.strftime("%Y-%m-%d %H:00"),
         "[[DIA_SEMANA]]": DIAS_ES[hoy.weekday()],
         "[[TIMEZONE]]": tz.key,
         "[[NOMBRE_CLIENTE]]": cliente.nombre or "(desconocido todavia)",
@@ -391,7 +397,7 @@ def _run_agent(
     disponibilidad: no volver a ofrecer huecos sin confirmar).
     """
     client = _client()
-    modelo = modelo_claude(session)
+    modelo = modelo_agente(session)
     base_len = len(messages)
 
     # Prompt caching: cachea bloque system y herramientas (estables durante el bucle).
@@ -409,7 +415,13 @@ def _run_agent(
         )
 
         if resp.stop_reason != "tool_use":
-            return _texto_de(resp.content), messages[base_len:]
+            texto = _texto_de(resp.content)
+            if resp.stop_reason == "max_tokens":
+                # Respuesta cortada por el limite de tokens: no enviar una frase
+                # a medias al cliente; recortar a la ultima frase completa.
+                log.warning("Respuesta truncada por max_tokens para %s", telefono)
+                texto = _recortar_a_frase(texto)
+            return texto, messages[base_len:]
 
         # Adjuntar el turno del asistente (con sus bloques tool_use), ya serializado
         # para que sea persistible y reenviable en turnos posteriores.
@@ -441,6 +453,14 @@ def _run_agent(
 def _texto_de(content: list[Any]) -> str:
     partes = [b.text for b in content if getattr(b, "type", None) == "text"]
     return "\n".join(p for p in partes if p).strip() or "Perdona, no te he entendido. Puedes repetirlo?"
+
+
+def _recortar_a_frase(texto: str) -> str:
+    """Recorta un texto truncado a su ultima frase completa (., !, ? o salto de linea)."""
+    corte = max(texto.rfind(c) for c in ".!?\n")
+    if corte > 0:
+        return texto[: corte + 1].strip()
+    return texto
 
 
 # --------------------------------------------------------------------------- #

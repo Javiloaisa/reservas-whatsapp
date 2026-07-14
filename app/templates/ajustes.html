@@ -12,8 +12,13 @@
     <input name="telegram_chat_id" value="{{ cfg.telegram_chat_id|default('') }}" style="width:100%;" placeholder="1688105242">
     <small style="color:#888;">El token del bot va en el <code>.env</code> (TELEGRAM_TOKEN). Aquí solo el chat_id.</small>
 
-    <label>Modelo de Claude</label>
-    <input name="modelo_claude" value="{{ cfg.modelo_claude|default('') }}" style="width:100%;">
+    <label>Modelo del agente (conversación y reservas)</label>
+    <input name="modelo_agente" value="{{ cfg.modelo_agente|default('') }}" style="width:100%;" placeholder="claude-sonnet-4-6">
+    <small style="color:#888;">Vacío = el del <code>.env</code> (CLAUDE_MODEL_AGENTE). Necesita un modelo capaz (Sonnet); con Haiku da respuestas raras.</small>
+
+    <label>Modelo del clasificador (cita / no cita)</label>
+    <input name="modelo_clasificador" value="{{ cfg.modelo_clasificador|default('') }}" style="width:100%;" placeholder="claude-haiku-4-5-20251001">
+    <small style="color:#888;">Vacío = el del <code>.env</code> (CLAUDE_MODEL). Tarea simple: Haiku basta y es ~3x más barato.</small>
 
     <label>Bot automático</label>
     <select name="bot_activo" style="width:100%;">
